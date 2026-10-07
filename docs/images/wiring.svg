@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 440" width="760" height="440" font-family="Helvetica, Arial, sans-serif">
+  <title>Wiring: 2.2" ILI9341 TFT to RP2040 USB stick</title>
+  <rect width="760" height="440" fill="#ffffff"/>
+
+  <!-- Display module -->
+  <rect x="20" y="40" width="210" height="370" rx="10" fill="#c8102e"/>
+  <rect x="34" y="54" width="96" height="342" rx="4" fill="#1c1c1c"/>
+  <text x="82" y="225" fill="#e8e8e8" font-size="15" text-anchor="middle" transform="rotate(-90 82 225)">2.2" ILI9341 240×320</text>
+  <text x="125" y="30" fill="#333" font-size="14" font-weight="bold" text-anchor="middle">TFT module (9-pin)</text>
+
+  <!-- RP2040 board -->
+  <rect x="530" y="40" width="210" height="370" rx="10" fill="#1c1c1c"/>
+  <rect x="690" y="150" width="50" height="150" rx="3" fill="#d4a017"/>
+  <text x="715" y="225" fill="#1c1c1c" font-size="12" font-weight="bold" text-anchor="middle" transform="rotate(90 715 225)">USB-A</text>
+  <text x="635" y="30" fill="#333" font-size="14" font-weight="bold" text-anchor="middle">RP2040 USB stick</text>
+
+  <g font-size="13">
+    <!-- one row per display pin: y = 80 + 36*(n-1) -->
+    <g id="vcc">
+      <line x1="230" y1="80" x2="530" y2="80" stroke="#d62728" stroke-width="4"/>
+      <text x="222" y="85" fill="#fff" text-anchor="end">1 VCC</text>
+      <text x="540" y="85" fill="#fff">3V3</text>
+    </g>
+    <g id="gnd">
+      <line x1="230" y1="116" x2="530" y2="116" stroke="#444" stroke-width="4"/>
+      <text x="222" y="121" fill="#fff" text-anchor="end">2 GND</text>
+      <text x="540" y="121" fill="#fff">GND</text>
+    </g>
+    <g id="cs">
+      <line x1="230" y1="152" x2="530" y2="152" stroke="#ff7f0e" stroke-width="4"/>
+      <text x="222" y="157" fill="#fff" text-anchor="end">3 CS</text>
+      <text x="540" y="157" fill="#fff">GP5</text>
+    </g>
+    <g id="reset">
+      <line x1="230" y1="188" x2="530" y2="188" stroke="#9467bd" stroke-width="4"/>
+      <text x="222" y="193" fill="#fff" text-anchor="end">4 RESET</text>
+      <text x="540" y="193" fill="#fff">GP7</text>
+    </g>
+    <g id="dc">
+      <line x1="230" y1="224" x2="530" y2="224" stroke="#bcbd22" stroke-width="4"/>
+      <text x="222" y="229" fill="#fff" text-anchor="end">5 DC/RS</text>
+      <text x="540" y="229" fill="#fff">GP6</text>
+    </g>
+    <g id="mosi">
+      <line x1="230" y1="260" x2="530" y2="260" stroke="#1f77b4" stroke-width="4"/>
+      <text x="222" y="265" fill="#fff" text-anchor="end">6 SDI/MOSI</text>
+      <text x="540" y="265" fill="#fff">GP3 · SPI0 TX</text>
+    </g>
+    <g id="sck">
+      <line x1="230" y1="296" x2="530" y2="296" stroke="#2ca02c" stroke-width="4"/>
+      <text x="222" y="301" fill="#fff" text-anchor="end">7 SCK</text>
+      <text x="540" y="301" fill="#fff">GP2 · SPI0 SCK</text>
+    </g>
+    <g id="led">
+      <line x1="230" y1="332" x2="530" y2="332" stroke="#e377c2" stroke-width="4"/>
+      <text x="222" y="337" fill="#fff" text-anchor="end">8 LED</text>
+      <text x="540" y="337" fill="#fff">3V3</text>
+    </g>
+    <g id="miso">
+      <line x1="230" y1="368" x2="530" y2="368" stroke="#17becf" stroke-width="4"/>
+      <text x="222" y="373" fill="#fff" text-anchor="end">9 SDO/MISO</text>
+      <text x="540" y="373" fill="#fff">GP4 · SPI0 RX</text>
+    </g>
+  </g>
+
+  <text x="380" y="432" fill="#555" font-size="12" text-anchor="middle">VCC to 5V only if the module has its own 3.3 V regulator (see docs/hardware.md). LED may go to GP8 (set PIN_BL 8).</text>
+</svg>

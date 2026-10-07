@@ -1,0 +1,18 @@
+# Build output
+build/
+build-*/
+*.uf2
+*.elf
+*.bin
+*.hex
+*.dis
+*.map
+
+# Host test screenshots
+*.ppm
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
