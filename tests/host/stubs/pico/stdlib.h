@@ -9,6 +9,7 @@
 
 typedef unsigned int uint;
 
+#define GPIO_IN            0
 #define GPIO_OUT           1
 #define GPIO_FUNC_SPI      1
 #define PICO_ERROR_TIMEOUT (-1)
@@ -16,6 +17,8 @@ typedef unsigned int uint;
 void gpio_init(uint pin);
 void gpio_set_dir(uint pin, bool out);
 void gpio_put(uint pin, bool value);
+void gpio_pull_up(uint pin);
+bool gpio_get(uint pin);
 void gpio_set_function(uint pin, int fn);
 
 void sleep_ms(uint32_t ms);

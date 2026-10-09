@@ -12,6 +12,7 @@
 #include "hardware/rtc.h"
 #include "dragon.h"
 #include "ili9341.h"
+#include "joystick.h"
 #include "pico/stdlib.h"
 #include "tortoise.h"
 
@@ -210,8 +211,10 @@ int main(void) {
 
 #if SHOW_TORTOISE
     tortoise_draw_scene();
+    joystick_init();
     while (true) {
         poll_usb(); // keep serial alive so '?' and 1200-baud flashing still work
+        tortoise_buttons(joystick_poll());
         tortoise_step(time_us_32() / 1000);
         sleep_ms(5);
     }

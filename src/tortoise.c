@@ -7,6 +7,7 @@
 #include <stdlib.h>
 
 #include "ili9341.h"
+#include "joystick.h"
 #include "tortoise.h"
 
 extern const uint16_t tortoise_image[ILI9341_WIDTH * ILI9341_HEIGHT];
@@ -17,7 +18,7 @@ extern const uint16_t tortoise_image[ILI9341_WIDTH * ILI9341_HEIGHT];
 #define GROUND_Y  206
 
 #define FRAME_MS  25
-#define MAX_OBJS  8
+#define MAX_OBJS  12
 #define TILE_MAX  48
 #define FP        8 // fixed point: 8 fractional bits
 #define ONE       (1 << FP)
@@ -29,10 +30,12 @@ typedef struct {
     bool active;
     int kind;
     int x, y, vx, vy; // fixed point
+    int g;            // gravity added to vy each frame
     int r, r0, life, life0;
 } obj_t;
 
 static obj_t objs[MAX_OBJS];
+static bool auto_fire = true;
 static uint16_t tile[TILE_MAX * TILE_MAX];
 static uint32_t rng = 2463534242u;
 
@@ -86,14 +89,15 @@ static void redraw(int x0, int y0, int x1, int y1) {
     ili9341_blit(x0, y0, w, h, tile);
 }
 
-static void spawn(int kind, int x, int y, int vx, int vy, int r, int life) {
+static obj_t *spawn(int kind, int x, int y, int vx, int vy, int r, int life) {
     for (int i = 0; i < MAX_OBJS; i++) {
         obj_t *o = &objs[i];
         if (o->active) continue;
-        *o = (obj_t){true, kind, x << FP, y << FP, vx, vy, r, r, life, life};
+        *o = (obj_t){true, kind, x << FP, y << FP, vx, vy, 0, r, r, life, life};
         redraw(x - r - 1, y - r - 1, x + r + 1, y + r + 1);
-        return;
+        return o;
     }
+    return NULL;
 }
 
 static void fire(void) {
@@ -102,7 +106,15 @@ static void fire(void) {
     int vx = speed;
     int vy = -rnd_range(ONE / 4, 3 * ONE);
     spawn(FLASH, MUZZLE_X + 3, MUZZLE_Y - 1, 0, 0, 9, 5);
-    spawn(BALL, MUZZLE_X + 2, MUZZLE_Y, vx, vy, 5, 0);
+    obj_t *ball = spawn(BALL, MUZZLE_X + 2, MUZZLE_Y, vx, vy, 5, 0);
+    if (ball) ball->g = GRAVITY;
+}
+
+// Straight-ish shot in direction (dx, dy), each -1, 0 or 1, with little gravity.
+static void fire_dir(int dx, int dy) {
+    spawn(FLASH, MUZZLE_X + 3, MUZZLE_Y - 1, 0, 0, 9, 5);
+    obj_t *ball = spawn(BALL, MUZZLE_X + 2, MUZZLE_Y, dx * 5 * ONE, dy * 5 * ONE, 5, 0);
+    if (ball) ball->g = GRAVITY / 5;
 }
 
 static void update(obj_t *o) {
@@ -113,12 +125,14 @@ static void update(obj_t *o) {
     bool dead = false, hit_ground = false;
 
     if (o->kind == BALL) {
-        o->vy += GRAVITY;
+        o->vy += o->g;
         if ((o->y >> FP) >= GROUND_Y) {
             o->y = GROUND_Y << FP;
             dead = hit_ground = true;
         }
-        if ((o->x >> FP) > ILI9341_WIDTH + o->r) dead = true;
+        if ((o->x >> FP) > ILI9341_WIDTH + o->r || (o->x >> FP) < -o->r ||
+            (o->y >> FP) < -o->r)
+            dead = true;
     } else {
         o->r = o->r0 * (o->life0 - ++o->life) / o->life0;
         if (o->life >= o->life0) dead = true;
@@ -138,6 +152,19 @@ void tortoise_draw_scene(void) {
     ili9341_blit(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, tortoise_image);
 }
 
+void tortoise_buttons(uint8_t pressed) {
+    if (pressed & JOY_UP) fire_dir(0, -1);
+    if (pressed & JOY_DOWN) fire_dir(0, 1);
+    if (pressed & JOY_LEFT) fire_dir(-1, 0);
+    if (pressed & JOY_RIGHT) fire_dir(1, 0);
+    if (pressed & JOY_MID) fire();
+    if (pressed & JOY_SET) auto_fire = !auto_fire;
+    if (pressed & JOY_RESET) {
+        for (int i = 0; i < MAX_OBJS; i++) objs[i].active = false;
+        tortoise_draw_scene();
+    }
+}
+
 void tortoise_step(uint32_t ms) {
     static uint32_t last_ms, next_fire;
     if (ms - last_ms < FRAME_MS) return;
@@ -145,7 +172,7 @@ void tortoise_step(uint32_t ms) {
 
     if (!next_fire) next_fire = ms + 800;
     if ((int32_t)(ms - next_fire) >= 0) {
-        fire();
+        if (auto_fire) fire();
         next_fire = ms + (uint32_t)rnd_range(500, 1500);
     }
     for (int i = 0; i < MAX_OBJS; i++)

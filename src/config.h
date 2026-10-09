@@ -13,6 +13,16 @@
 #define PIN_RST  7  // display RESET    (pin 4)
 #define PIN_BL   -1 // display LED (pin 8) tied to 3V3; use 8 to switch it from GP8
 
+// Joystick buttons: each switches its GPIO to GND (internal pull-ups are used).
+// Pads on the left edge except SET/RESET, which are on the GP0-GP8 edge.
+#define PIN_JOY_UP    26
+#define PIN_JOY_DOWN  27
+#define PIN_JOY_LEFT  28
+#define PIN_JOY_RIGHT 15
+#define PIN_JOY_MID   14
+#define PIN_JOY_SET   0  // toggles auto-fire
+#define PIN_JOY_RESET 1  // clears the cannonballs
+
 #define SPI_BAUD (40 * 1000 * 1000) // gives 31.25 MHz with the 125 MHz default clock
 
 // 1 = show the armoured tortoise firing cannonballs instead of the clock.

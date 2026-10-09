@@ -1,4 +1,4 @@
-add_executable(tft_clock main.c dragon.c tortoise.c tortoise_image.c)
+add_executable(tft_clock main.c dragon.c tortoise.c tortoise_image.c joystick.c)
 
 target_include_directories(tft_clock PRIVATE ${CMAKE_CURRENT_LIST_DIR})
 target_link_libraries(tft_clock PRIVATE ili9341 pico_stdlib hardware_rtc)

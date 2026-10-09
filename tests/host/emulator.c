@@ -164,6 +164,10 @@ void sleep_us(uint64_t us) { (void)us; }
 
 uint32_t time_us_32(void) { return 0; }
 
+void gpio_pull_up(uint pin) { (void)pin; }
+
+bool gpio_get(uint pin) { (void)pin; return true; } // buttons released
+
 // ------------------------------------------------------------- scenario
 
 static void check_colour_step(void) {
