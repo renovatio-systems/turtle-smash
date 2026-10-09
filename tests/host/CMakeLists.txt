@@ -25,3 +25,24 @@ target_compile_definitions(tft_clock_emu PRIVATE SHOW_COLOUR_BARS=0 SHOW_DRAGON=
 
 enable_testing()
 add_test(NAME firmware_emulation COMMAND tft_clock_emu)
+
+# Renderer + game test: panel contents must match a full composite after every frame.
+add_executable(render_emu
+    render_test.c
+    ${REPO_ROOT}/src/render.c
+    ${REPO_ROOT}/src/input.c
+    ${REPO_ROOT}/src/physics.c
+    ${REPO_ROOT}/src/tortoise.c
+    ${REPO_ROOT}/src/tortoise_image.c
+    ${REPO_ROOT}/lib/ili9341/src/ili9341.c
+    ${REPO_ROOT}/lib/ili9341/src/font5x7.c
+)
+target_include_directories(render_emu PRIVATE
+    stubs
+    .
+    ${REPO_ROOT}/src
+    ${REPO_ROOT}/lib/ili9341/include
+)
+target_compile_options(render_emu PRIVATE -Wall -Wextra -Werror)
+target_compile_definitions(render_emu PRIVATE EMU_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+add_test(NAME render_and_game COMMAND render_emu)

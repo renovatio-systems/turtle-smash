@@ -12,7 +12,8 @@
 #include "hardware/rtc.h"
 #include "dragon.h"
 #include "ili9341.h"
-#include "joystick.h"
+#include "input.h"
+#include "render.h"
 #include "pico/stdlib.h"
 #include "tortoise.h"
 
@@ -95,6 +96,11 @@ static bool handle_line(const char *line) {
         print_time();
         printf("Display: SPI %u Hz, RDDPM 0x%02X (0x9C = on, 0x00/0xFF = no reply)\n",
                spi_baud, ili9341_read_reg8(ILI9341_RDDPM));
+#if SHOW_TORTOISE
+        const render_stats_t *rs = render_stats();
+        printf("Render: last flush %u rects, %u px, %u us (worst %u us)\n", (unsigned)rs->rects,
+               (unsigned)rs->pixels, (unsigned)rs->us, (unsigned)rs->max_us);
+#endif
     } else {
         printf("Send YYYY-MM-DD HH:MM:SS to set the clock, ? to show it\n");
     }
@@ -211,12 +217,35 @@ int main(void) {
 
 #if SHOW_TORTOISE
     tortoise_draw_scene();
-    joystick_init();
+    input_init();
+
+    // Fixed timestep: game ticks are scheduled on an absolute 1/GAME_FPS grid, so
+    // a slow frame never shifts later ones. After a long stall (more than
+    // MAX_CATCH_UP ticks behind) the grid is re-anchored instead of fast-forwarding.
+    const uint64_t tick_us = 1000000 / GAME_FPS;
+    const int max_catch_up = 3;
+    uint64_t next_tick = time_us_64() + tick_us;
     while (true) {
-        poll_usb(); // keep serial alive so '?' and 1200-baud flashing still work
-        tortoise_buttons(joystick_poll());
-        tortoise_step(time_us_32() / 1000);
-        sleep_ms(5);
+        uint64_t now = time_us_64();
+        input_poll((uint32_t)(now / 1000));
+
+        int ticks = 0;
+        while (now >= next_tick && ticks < max_catch_up) {
+            tortoise_buttons(input_pressed());
+            tortoise_step();
+            next_tick += tick_us;
+            ticks++;
+        }
+        if (ticks) {
+            if (now >= next_tick) next_tick = now + tick_us;
+            render_flush();
+        }
+
+        static uint64_t next_usb;
+        if (now >= next_usb) { // keep serial alive so '?' and 1200-baud flashing still work
+            poll_usb();
+            next_usb = now + 10000;
+        }
     }
 #elif SHOW_DRAGON
     dragon_draw_scene();

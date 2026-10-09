@@ -23,6 +23,8 @@
 #define PIN_JOY_SET   0  // toggles auto-fire
 #define PIN_JOY_RESET 1  // clears the cannonballs
 
+#define GAME_FPS 30 // fixed game tick rate
+
 #define SPI_BAUD (40 * 1000 * 1000) // gives 31.25 MHz with the 125 MHz default clock
 
 // 1 = show the armoured tortoise firing cannonballs instead of the clock.

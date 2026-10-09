@@ -51,6 +51,12 @@ void ili9341_fill_screen(uint16_t color);
 // Copies a w*h block of native-endian RGB565 pixels to the screen at (x, y).
 void ili9341_blit(int x, int y, int w, int h, const uint16_t *pixels);
 
+// Same as ili9341_blit but returns immediately while DMA clocks the pixels out;
+// `pixels` must stay untouched until the next ili9341_* call or ili9341_wait().
+// Every other function in this file waits for a running transfer first.
+void ili9341_blit_dma(int x, int y, int w, int h, const uint16_t *pixels);
+void ili9341_wait(void);
+
 // Character cell is 6*scale x 8*scale pixels (5x7 glyph plus 1px spacing),
 // background included, so redrawing a character never flickers.
 void ili9341_draw_char(int x, int y, char c, uint16_t fg, uint16_t bg, int scale);

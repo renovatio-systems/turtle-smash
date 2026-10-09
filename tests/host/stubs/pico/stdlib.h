@@ -24,6 +24,8 @@ void gpio_set_function(uint pin, int fn);
 void sleep_ms(uint32_t ms);
 void sleep_us(uint64_t us);
 uint32_t time_us_32(void);
+uint64_t time_us_64(void);
+static inline void tight_loop_contents(void) {}
 
 bool stdio_init_all(void);
 int getchar_timeout_us(uint32_t timeout_us);

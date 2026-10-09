@@ -102,7 +102,7 @@ static void save_ppm(const char *name) {
     fclose(f);
 }
 
-static int count_pixels(int x, int y, int w, int h, uint16_t color) {
+__attribute__((unused)) static int count_pixels(int x, int y, int w, int h, uint16_t color) {
     int n = 0;
     for (int j = y; j < y + h; j++)
         for (int i = x; i < x + w; i++)
@@ -162,13 +162,29 @@ int getchar_timeout_us(uint32_t timeout_us) {
 
 void sleep_us(uint64_t us) { (void)us; }
 
-uint32_t time_us_32(void) { return 0; }
+uint64_t emu_time_us;
+uint64_t time_us_64(void) { return emu_time_us; }
+uint32_t time_us_32(void) { return (uint32_t)emu_time_us; }
 
 void gpio_pull_up(uint pin) { (void)pin; }
 
-bool gpio_get(uint pin) { (void)pin; return true; } // buttons released
+uint32_t emu_pins_low; // bit n set = GPIO n is pulled low (button pressed)
+bool gpio_get(uint pin) { return !((emu_pins_low >> pin) & 1); }
+
+void spi_set_format(spi_inst_t *spi, uint data_bits, int cpol, int cpha, int order) {
+    (void)spi; (void)data_bits; (void)cpol; (void)cpha; (void)order;
+}
+
+void emu_dma_transfer(const uint16_t *src, uint count) {
+    if (lcd.cs) lcd.writes_without_cs++;
+    for (uint i = 0; i < count; i++) { // 16-bit frames go out MSB first
+        lcd_byte(src[i] >> 8);
+        lcd_byte(src[i] & 0xFF);
+    }
+}
 
 // ------------------------------------------------------------- scenario
+#ifndef EMU_NO_SCENARIO
 
 static void check_colour_step(void) {
     static const struct {
@@ -232,3 +248,4 @@ void sleep_ms(uint32_t ms) {
     if (ms == 600) check_colour_step(); // colour test step
     if (ms == 10) loop_iteration(++frame); // main loop tick
 }
+#endif // EMU_NO_SCENARIO

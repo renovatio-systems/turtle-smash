@@ -1,9 +1,10 @@
 // The armoured tortoise picture (src/tortoise_image.c, generated from
 // assets/tortoise.png) with cannonballs fired from its cannon at a flying pig.
 // Each player gets START_BALLS balls and scores a hit when a ball touches the
-// pig; RESET starts a new game. The picture is drawn once; each frame only
-// small tiles around moving objects are redrawn, composed from the picture plus
-// the pig and the objects on top of it.
+// pig; RESET starts a new game. The picture is a static background: whatever
+// moves reports its old and new boxes to the dirty-rectangle renderer
+// (render.c), which redraws just those areas from the picture plus the pig,
+// the objects and the scoreboard layered on top. step() runs at 30 ticks/s.
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -11,7 +12,9 @@
 #include <string.h>
 
 #include "ili9341.h"
-#include "joystick.h"
+#include "input.h"
+#include "physics.h"
+#include "render.h"
 #include "tortoise.h"
 
 extern const uint16_t tortoise_image[ILI9341_WIDTH * ILI9341_HEIGHT];
@@ -21,12 +24,8 @@ extern const uint16_t tortoise_image[ILI9341_WIDTH * ILI9341_HEIGHT];
 #define MUZZLE_Y  85
 #define GROUND_Y  206
 
-#define FRAME_MS  25
-#define MAX_OBJS  12
-#define TILE_MAX  48
-#define FP        8 // fixed point: 8 fractional bits
-#define ONE       (1 << FP)
-#define GRAVITY   20 // 0.08 px/frame^2
+#define MAX_OBJS  32
+#define GRAVITY   36 // 0.14 px/tick^2
 
 #define START_BALLS 100
 #define HUD_H       30 // scoreboard strip at the top of the screen
@@ -49,7 +48,8 @@ static obj_t objs[MAX_OBJS];
 static bool auto_fire; // off by default so every ball is the player's
 
 static int balls_left = START_BALLS, hits;
-static uint32_t last_ms; // time of the last animation frame
+static uint32_t tick; // game ticks since start
+static char hud_balls[24], hud_hits[24];
 
 static struct {
     bool active;
@@ -57,10 +57,9 @@ static struct {
     int fx, vx; // fixed-point x and speed (moves left)
     int base_y;
     int age;
-    uint32_t respawn_at;
+    uint32_t respawn_at; // tick
 } pig;
 static uint16_t pig_px[2][PIG_H][PIG_W]; // two wing positions, 0 = transparent
-static uint16_t tile[TILE_MAX * TILE_MAX];
 static uint32_t rng = 2463534242u;
 
 static uint32_t rnd(void) { // xorshift32
@@ -145,53 +144,63 @@ static void build_pig(void) {
     }
 }
 
+// Scoreboard text is rebuilt when a number changes; the layer below draws it.
 static void hud_draw(void) {
-    char buf[16];
-    snprintf(buf, sizeof buf, "BALLS %3d", balls_left);
-    ili9341_draw_string(4, 2, buf, balls_left ? COLOR_YELLOW : COLOR_RED, COLOR_BLACK, 2);
-    snprintf(buf, sizeof buf, "HITS %3d", hits);
-    ili9341_draw_string(ILI9341_WIDTH - 8 * 12 - 4, 2, buf, COLOR_GREEN, COLOR_BLACK, 2);
-    const char *msg = balls_left ? "" : "  OUT OF BALLS - PRESS RESET  ";
-    int n = balls_left ? 30 : (int)strlen(msg);
-    char line[32];
-    snprintf(line, sizeof line, "%*s", n, msg);
-    ili9341_draw_string((ILI9341_WIDTH - n * 6) / 2, 20, line, COLOR_GREY, COLOR_BLACK, 1);
+    snprintf(hud_balls, sizeof hud_balls, "BALLS %3d", balls_left);
+    snprintf(hud_hits, sizeof hud_hits, "HITS %3d", hits);
+    render_dirty(0, 0, ILI9341_WIDTH, HUD_H);
 }
 
-// Redraws a rectangle: the picture with every active object on top.
-static void redraw(int x0, int y0, int x1, int y1) {
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 > ILI9341_WIDTH - 1) x1 = ILI9341_WIDTH - 1;
-    if (y1 > ILI9341_HEIGHT - 1) y1 = ILI9341_HEIGHT - 1;
-    int w = x1 - x0 + 1, h = y1 - y0 + 1;
-    if (w <= 0 || h <= 0 || w > TILE_MAX || h > TILE_MAX) return;
+static void hud_layer(const render_target_t *t) {
+    if (t->y >= HUD_H) return;
+    render_text(t, 4, 2, hud_balls, balls_left ? COLOR_YELLOW : COLOR_RED, COLOR_BLACK, 2);
+    render_text(t, ILI9341_WIDTH - 8 * 12 - 4, 2, hud_hits, COLOR_GREEN, COLOR_BLACK, 2);
+    if (!balls_left) {
+        const char *msg = "  OUT OF BALLS - PRESS RESET  ";
+        render_text(t, (ILI9341_WIDTH - (int)strlen(msg) * 6) / 2, 20, msg, COLOR_GREY, COLOR_BLACK, 1);
+    }
+}
 
-    for (int y = 0; y < h; y++) {
-        for (int x = 0; x < w; x++) {
-            uint16_t c = tortoise_image[(y0 + y) * ILI9341_WIDTH + x0 + x];
-            if (pig.active) {
-                int px = x0 + x - pig.x, py = y0 + y - pig.y;
-                if (px >= 0 && px < PIG_W && py >= 0 && py < PIG_H && pig_px[(pig.age / 4) & 1][py][px])
-                    c = pig_px[(pig.age / 4) & 1][py][px];
-            }
-            for (int i = 0; i < MAX_OBJS; i++) {
-                const obj_t *o = &objs[i];
-                if (o->active) obj_pixel(o, x0 + x - (o->x >> FP), y0 + y - (o->y >> FP), &c);
-            }
-            tile[y * w + x] = c;
+static void pig_layer(const render_target_t *t) {
+    int x0, y0, x1, y1;
+    if (!pig.active || !render_clip(t, pig.x, pig.y, PIG_W, PIG_H, &x0, &y0, &x1, &y1)) return;
+    const uint16_t(*spr)[PIG_W] = pig_px[(pig.age / 3) & 1];
+    for (int sy = y0; sy < y1; sy++) {
+        uint16_t *p = render_px(t, x0, sy);
+        for (int sx = x0; sx < x1; sx++, p++) {
+            uint16_t c = spr[sy - pig.y][sx - pig.x];
+            if (c) *p = c;
         }
     }
-    ili9341_blit(x0, y0, w, h, tile);
-    if (y0 < HUD_H) hud_draw(); // a ball passing through the scoreboard
+}
+
+static void objs_layer(const render_target_t *t) {
+    for (int i = 0; i < MAX_OBJS; i++) {
+        const obj_t *o = &objs[i];
+        if (!o->active) continue;
+        int cx = o->x >> FP, cy = o->y >> FP, x0, y0, x1, y1;
+        if (!render_clip(t, cx - o->r, cy - o->r, 2 * o->r + 1, 2 * o->r + 1, &x0, &y0, &x1, &y1))
+            continue;
+        for (int sy = y0; sy < y1; sy++) {
+            for (int sx = x0; sx < x1; sx++) {
+                uint16_t c;
+                if (obj_pixel(o, sx - cx, sy - cy, &c)) *render_px(t, sx, sy) = c;
+            }
+        }
+    }
+}
+
+static void mark_obj(const obj_t *o, int r) {
+    render_dirty((o->x >> FP) - r - 1, (o->y >> FP) - r - 1, 2 * r + 3, 2 * r + 3);
 }
 
 static obj_t *spawn(int kind, int x, int y, int vx, int vy, int r, int life) {
     for (int i = 0; i < MAX_OBJS; i++) {
         obj_t *o = &objs[i];
         if (o->active) continue;
-        *o = (obj_t){true, kind, x << FP, y << FP, vx, vy, 0, r, r, life, life};
-        redraw(x - r - 1, y - r - 1, x + r + 1, y + r + 1);
+        *o = (obj_t){.active = true, .kind = kind, .x = x << FP, .y = y << FP, .vx = vx, .vy = vy,
+                     .r = r, .r0 = r, .life = 0, .life0 = life};
+        mark_obj(o, r);
         return o;
     }
     return NULL;
@@ -200,7 +209,7 @@ static obj_t *spawn(int kind, int x, int y, int vx, int vy, int r, int life) {
 // Fires one ball from the muzzle if any are left.
 static void launch(int vx, int vy, int g) {
     if (balls_left <= 0) return;
-    spawn(FLASH, MUZZLE_X + 3, MUZZLE_Y - 1, 0, 0, 9, 5);
+    spawn(FLASH, MUZZLE_X + 3, MUZZLE_Y - 1, 0, 0, 9, 7);
     obj_t *ball = spawn(BALL, MUZZLE_X + 2, MUZZLE_Y, vx, vy, 5, 0);
     if (!ball) return;
     ball->g = g;
@@ -210,15 +219,15 @@ static void launch(int vx, int vy, int g) {
 
 static void fire(void) {
     // Barrel points about 10 degrees above horizontal; vary speed and elevation.
-    int speed = rnd_range(3 * ONE, 6 * ONE);
+    int speed = rnd_range(4 * ONE, 8 * ONE);
     int vx = speed;
-    int vy = -rnd_range(ONE / 4, 3 * ONE);
+    int vy = -rnd_range(ONE / 3, 4 * ONE);
     launch(vx, vy, GRAVITY);
 }
 
 // Straight-ish shot in direction (dx, dy), each -1, 0 or 1, with little gravity.
 static void fire_dir(int dx, int dy) {
-    launch(dx * 5 * ONE, dy * 5 * ONE, GRAVITY / 5);
+    launch(dx * 7 * ONE, dy * 7 * ONE, GRAVITY / 5);
 }
 
 static void update(obj_t *o) {
@@ -244,52 +253,43 @@ static void update(obj_t *o) {
 
     int nx = o->x >> FP, ny = o->y >> FP;
     int r = (or_ > o->r ? or_ : o->r) + 1;
-    int x0 = (ox < nx ? ox : nx) - r, x1 = (ox > nx ? ox : nx) + r;
-    int y0 = (oy < ny ? oy : ny) - r, y1 = (oy > ny ? oy : ny) + r;
+    render_dirty(ox - r, oy - r, 2 * r + 1, 2 * r + 1); // where it was
+    render_dirty(nx - r, ny - r, 2 * r + 1, 2 * r + 1); // where it is now
 
     if (dead) o->active = false;
-    redraw(x0, y0, x1, y1);
-    if (hit_ground) spawn(DUST, nx, GROUND_Y - 2, 0, -ONE / 8, 7, 8);
-}
-
-static void redraw_pig(int ox, int oy) {
-    int x0 = (ox < pig.x ? ox : pig.x) - 1, x1 = (ox > pig.x ? ox : pig.x) + PIG_W;
-    int y0 = (oy < pig.y ? oy : pig.y) - 1, y1 = (oy > pig.y ? oy : pig.y) + PIG_H;
-    redraw(x0, y0, x1, y1);
+    if (hit_ground) spawn(DUST, nx, GROUND_Y - 2, 0, -ONE / 8, 7, 11);
 }
 
 static void pig_launch(void) {
-    static const int bob[8] = {0, 1, 2, 2, 1, 0, -1, -1};
     pig.active = true;
     pig.fx = ILI9341_WIDTH << FP;
-    pig.vx = rnd_range(ONE, 2 * ONE + ONE / 4);
+    pig.vx = rnd_range(ONE * 4 / 3, 3 * ONE);
     pig.base_y = rnd_range(PIG_Y_MIN + 2, PIG_Y_MAX);
     pig.age = 0;
     pig.x = pig.fx >> FP;
-    pig.y = pig.base_y + bob[0];
-    redraw(pig.x, pig.y, pig.x + PIG_W - 1, pig.y + PIG_H - 1);
+    pig.y = pig.base_y;
+    render_dirty(pig.x, pig.y, PIG_W, PIG_H);
 }
 
-static void pig_move(uint32_t ms) {
-    static const int bob[8] = {0, 1, 2, 2, 1, 0, -1, -1};
+static void pig_move(void) {
     if (!pig.active) {
-        if ((int32_t)(ms - pig.respawn_at) >= 0) pig_launch();
+        if ((int32_t)(tick - pig.respawn_at) >= 0) pig_launch();
         return;
     }
-    int ox = pig.x, oy = pig.y;
+    render_dirty(pig.x, pig.y, PIG_W, PIG_H); // where it was
     pig.fx -= pig.vx;
     pig.age++;
     pig.x = pig.fx >> FP;
-    pig.y = pig.base_y + bob[(pig.age / 3) & 7];
+    pig.y = pig.base_y + ((fx_sin(pig.age * 15) * 2 + (1 << (FX_TRIG_SHIFT - 1))) >> FX_TRIG_SHIFT);
     if (pig.x < -PIG_W) {
         pig.active = false;
-        pig.respawn_at = ms + (uint32_t)rnd_range(500, 1500);
+        pig.respawn_at = tick + (uint32_t)rnd_range(15, 45);
     }
-    redraw_pig(ox, oy);
+    render_dirty(pig.x, pig.y, PIG_W, PIG_H);
 }
 
 // A ball touching the pig scores a hit: the pig bursts and comes back later.
-static void check_hits(uint32_t ms) {
+static void check_hits(void) {
     if (!pig.active) return;
     for (int i = 0; i < MAX_OBJS; i++) {
         obj_t *b = &objs[i];
@@ -298,15 +298,15 @@ static void check_hits(uint32_t ms) {
         if (bx < pig.x - m || bx > pig.x + PIG_W + m || by < pig.y - m || by > pig.y + PIG_H + m) continue;
 
         int cx = pig.x + PIG_W / 2, cy = pig.y + PIG_H / 2;
+        mark_obj(b, b->r);
+        render_dirty(pig.x, pig.y, PIG_W, PIG_H);
         b->active = false;
         pig.active = false;
-        pig.respawn_at = ms + 1500;
+        pig.respawn_at = tick + 45;
         hits++;
-        redraw(bx - b->r - 1, by - b->r - 1, bx + b->r + 1, by + b->r + 1);
-        redraw(pig.x - 1, pig.y - 1, pig.x + PIG_W, pig.y + PIG_H);
-        spawn(FLASH, cx, cy, 0, 0, 12, 6);
+        spawn(FLASH, cx, cy, 0, 0, 12, 8);
         for (int k = 0; k < 5; k++)
-            spawn(PORK, cx, cy, rnd_range(-ONE, ONE), rnd_range(-ONE, ONE), 4, 10);
+            spawn(PORK, cx, cy, rnd_range(-ONE * 4 / 3, ONE * 4 / 3), rnd_range(-ONE * 4 / 3, ONE * 4 / 3), 4, 13);
         hud_draw();
         return;
     }
@@ -316,10 +316,15 @@ void tortoise_draw_scene(void) {
     static bool built;
     if (!built) {
         build_pig();
+        render_init(tortoise_image);
+        render_add_layer(pig_layer);
+        render_add_layer(objs_layer);
+        render_add_layer(hud_layer);
         built = true;
     }
-    ili9341_blit(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, tortoise_image);
     hud_draw();
+    render_dirty_all();
+    render_flush();
 }
 
 void tortoise_buttons(uint8_t pressed) {
@@ -334,23 +339,23 @@ void tortoise_buttons(uint8_t pressed) {
         balls_left = START_BALLS;
         hits = 0;
         pig.active = false;
-        pig.respawn_at = last_ms; // pig returns on the next frame
-        tortoise_draw_scene();
+        pig.respawn_at = tick; // pig returns on the next tick
+        hud_draw();
+        render_dirty_all();
     }
 }
 
-void tortoise_step(uint32_t ms) {
+void tortoise_step(void) {
     static uint32_t next_fire;
-    if (ms - last_ms < FRAME_MS) return;
-    last_ms = ms;
+    tick++;
 
-    if (!next_fire) next_fire = ms + 800;
-    if ((int32_t)(ms - next_fire) >= 0) {
+    if (!next_fire) next_fire = tick + 24;
+    if ((int32_t)(tick - next_fire) >= 0) {
         if (auto_fire) fire();
-        next_fire = ms + (uint32_t)rnd_range(500, 1500);
+        next_fire = tick + (uint32_t)rnd_range(15, 45);
     }
     for (int i = 0; i < MAX_OBJS; i++)
         if (objs[i].active) update(&objs[i]);
-    pig_move(ms);
-    check_hits(ms);
+    pig_move();
+    check_hits();
 }

@@ -1,12 +1,15 @@
 #include "ili9341.h"
 
 #include "font5x7.h"
+#include "hardware/dma.h"
 #include "pico/stdlib.h"
 
 #define READ_BAUD (1000 * 1000) // reads are only specified up to ~6 MHz
 
 static ili9341_config_t cfg;
 static uint8_t line_buf[ILI9341_WIDTH * 2];
+static int dma_chan = -1;
+static bool dma_busy; // a DMA pixel transfer is in flight, CS still low
 
 // Command, data length, data...  Terminated by a zero command.
 // Power/gamma values are the widely used Adafruit/TFT_eSPI defaults.
@@ -40,6 +43,7 @@ static inline void cs(bool level) { gpio_put(cfg.pin_cs, level); }
 static inline void dc(bool level) { gpio_put(cfg.pin_dc, level); }
 
 static void write_cmd(uint8_t c) {
+    ili9341_wait(); // commands must not interleave with a running pixel transfer
     dc(0);
     cs(0);
     spi_write_blocking(cfg.spi, &c, 1);
@@ -71,6 +75,7 @@ static void gpio_out(uint pin, bool level) {
 
 uint ili9341_init(const ili9341_config_t *c) {
     cfg = *c;
+    dma_chan = dma_claim_unused_channel(true);
 
     uint actual = spi_init(cfg.spi, cfg.baud); // mode 0, 8 bit, MSB first
     gpio_set_function(cfg.pin_sck, GPIO_FUNC_SPI);
@@ -136,6 +141,32 @@ void ili9341_blit(int x, int y, int w, int h, const uint16_t *pixels) {
         spi_write_blocking(cfg.spi, line_buf, 2 * w);
     }
     cs(1);
+}
+
+void ili9341_blit_dma(int x, int y, int w, int h, const uint16_t *pixels) {
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > ILI9341_WIDTH || y + h > ILI9341_HEIGHT) return;
+    set_window(x, y, x + w - 1, y + h - 1); // also waits for the previous transfer
+    dc(1);
+    cs(0);
+    // 16-bit frames go out MSB first, so native RGB565 needs no byte swap.
+    spi_set_format(cfg.spi, 16, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    dma_channel_config dc_cfg = dma_channel_get_default_config(dma_chan);
+    channel_config_set_transfer_data_size(&dc_cfg, DMA_SIZE_16);
+    channel_config_set_dreq(&dc_cfg, spi_get_dreq(cfg.spi, true));
+    dma_channel_configure(dma_chan, &dc_cfg, &spi_get_hw(cfg.spi)->dr, pixels, (uint)(w * h), true);
+    dma_busy = true;
+}
+
+void ili9341_wait(void) {
+    if (!dma_busy) return;
+    dma_busy = false;
+    dma_channel_wait_for_finish_blocking(dma_chan);
+    while (spi_is_busy(cfg.spi)) tight_loop_contents();
+    cs(1);
+    spi_set_format(cfg.spi, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
+    // Transmit-only DMA still fills the receive FIFO; empty it so later reads are clean.
+    while (spi_is_readable(cfg.spi)) (void)spi_get_hw(cfg.spi)->dr;
+    spi_get_hw(cfg.spi)->icr = SPI_SSPICR_RORIC_BITS;
 }
 
 void ili9341_fill_screen(uint16_t color) {
