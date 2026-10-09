@@ -21,7 +21,7 @@ target_include_directories(tft_clock_emu PRIVATE
     ${REPO_ROOT}/lib/ili9341/include
 )
 target_compile_options(tft_clock_emu PRIVATE -Wall -Wextra -Werror)
-target_compile_definitions(tft_clock_emu PRIVATE EMU_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(tft_clock_emu PRIVATE SHOW_COLOUR_BARS=0 SHOW_DRAGON=0 SHOW_TORTOISE=0 EMU_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}")
 
 enable_testing()
 add_test(NAME firmware_emulation COMMAND tft_clock_emu)

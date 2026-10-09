@@ -59,7 +59,7 @@ You need CMake ≥ 3.13, the ARM GCC toolchain and the Pico SDK (2.x):
 
 ```sh
 sudo apt install cmake gcc-arm-none-eabi libnewlib-arm-none-eabi build-essential git
-git clone --recurse-submodules -b 2.1.1 https://github.com/raspberrypi/pico-sdk ~/pico-sdk
+git clone --recurse-submodules -b 2.3.1 https://github.com/raspberrypi/pico-sdk ~/pico-sdk
 export PICO_SDK_PATH=~/pico-sdk
 ```
 

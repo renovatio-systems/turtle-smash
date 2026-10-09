@@ -123,6 +123,21 @@ void ili9341_fill_rect(int x, int y, int w, int h, uint16_t color) {
     cs(1);
 }
 
+void ili9341_blit(int x, int y, int w, int h, const uint16_t *pixels) {
+    if (x < 0 || y < 0 || w <= 0 || h <= 0 || x + w > ILI9341_WIDTH || y + h > ILI9341_HEIGHT) return;
+    set_window(x, y, x + w - 1, y + h - 1);
+    dc(1);
+    cs(0);
+    for (int row = 0; row < h; row++, pixels += w) {
+        for (int i = 0; i < w; i++) {
+            line_buf[2 * i] = pixels[i] >> 8;
+            line_buf[2 * i + 1] = pixels[i] & 0xFF;
+        }
+        spi_write_blocking(cfg.spi, line_buf, 2 * w);
+    }
+    cs(1);
+}
+
 void ili9341_fill_screen(uint16_t color) {
     ili9341_fill_rect(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, color);
 }

@@ -162,6 +162,8 @@ int getchar_timeout_us(uint32_t timeout_us) {
 
 void sleep_us(uint64_t us) { (void)us; }
 
+uint32_t time_us_32(void) { return 0; }
+
 // ------------------------------------------------------------- scenario
 
 static void check_colour_step(void) {

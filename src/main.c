@@ -3,15 +3,17 @@
 // The RP2040 RTC has no battery backup, so on power-up the clock starts from
 // the firmware build time. Set the real time over USB serial by sending:
 //     YYYY-MM-DD HH:MM:SS     e.g. 2026-10-07 14:30:00
-// Send "?" to print the current time.
+// Send "?" to print the current time and the display's status register.
 
 #include <stdio.h>
 #include <string.h>
 
 #include "config.h"
 #include "hardware/rtc.h"
+#include "dragon.h"
 #include "ili9341.h"
 #include "pico/stdlib.h"
+#include "tortoise.h"
 
 // Layout (320 x 240 landscape). A character cell is 6*scale x 8*scale.
 #define TIME_SCALE 6
@@ -31,6 +33,8 @@ static const char *const MONTH_NAMES[12] = {
 
 // Characters currently on screen, so only changed digits are redrawn.
 static char shown_time[16], shown_date[16], shown_day[16];
+
+static uint spi_baud; // actual SPI clock, for the status report
 
 static int day_of_week(int y, int m, int d) { // 0 = Sunday
     static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
@@ -88,6 +92,8 @@ static bool handle_line(const char *line) {
         printf("Invalid date/time\n");
     } else if (line[0] == '?') {
         print_time();
+        printf("Display: SPI %u Hz, RDDPM 0x%02X (0x9C = on, 0x00/0xFF = no reply)\n",
+               spi_baud, ili9341_read_reg8(ILI9341_RDDPM));
     } else {
         printf("Send YYYY-MM-DD HH:MM:SS to set the clock, ? to show it\n");
     }
@@ -165,6 +171,21 @@ static void colour_test(void) {
     }
 }
 
+#if SHOW_COLOUR_BARS && !SHOW_DRAGON && !SHOW_TORTOISE
+// Eight full-height bars: white, yellow, cyan, green, magenta, red, blue, black.
+static void colour_bars(void) {
+    static const uint16_t bars[] = {
+        COLOR_WHITE, COLOR_YELLOW, COLOR_CYAN, COLOR_GREEN,
+        RGB565(255, 0, 255), COLOR_RED, COLOR_BLUE, COLOR_BLACK,
+    };
+    int n = sizeof bars / sizeof bars[0];
+    for (int i = 0; i < n; i++) {
+        int x0 = i * ILI9341_WIDTH / n, x1 = (i + 1) * ILI9341_WIDTH / n;
+        ili9341_fill_rect(x0, 0, x1 - x0, ILI9341_HEIGHT, bars[i]);
+    }
+}
+#endif
+
 int main(void) {
     stdio_init_all();
     rtc_init();
@@ -181,11 +202,33 @@ int main(void) {
         .pin_bl = PIN_BL,
         .baud = SPI_BAUD,
     };
-    uint baud = ili9341_init(&cfg);
+    uint baud = spi_baud = ili9341_init(&cfg);
     uint8_t power_mode = ili9341_read_reg8(ILI9341_RDDPM);
     printf("ILI9341 clock: SPI %u Hz, RDDPM 0x%02X (expect 0x9C)\n", baud, power_mode);
 
     colour_test();
+
+#if SHOW_TORTOISE
+    tortoise_draw_scene();
+    while (true) {
+        poll_usb(); // keep serial alive so '?' and 1200-baud flashing still work
+        tortoise_step(time_us_32() / 1000);
+        sleep_ms(5);
+    }
+#elif SHOW_DRAGON
+    dragon_draw_scene();
+    while (true) {
+        poll_usb(); // keep serial alive so '?' and 1200-baud flashing still work
+        dragon_step(time_us_32() / 1000);
+        sleep_ms(10);
+    }
+#elif SHOW_COLOUR_BARS
+    colour_bars();
+    while (true) {
+        poll_usb(); // keep serial alive so '?' and 1200-baud flashing still work
+        sleep_ms(10);
+    }
+#endif
 
     char info[40];
     ili9341_fill_screen(COLOR_BLACK);

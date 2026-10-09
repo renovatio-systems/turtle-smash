@@ -15,4 +15,19 @@
 
 #define SPI_BAUD (40 * 1000 * 1000) // gives 31.25 MHz with the 125 MHz default clock
 
+// 1 = show the armoured tortoise firing cannonballs instead of the clock.
+#ifndef SHOW_TORTOISE
+#define SHOW_TORTOISE 1
+#endif
+
+// 1 = show the fire-breathing dragon animation instead of the clock.
+#ifndef SHOW_DRAGON
+#define SHOW_DRAGON 0
+#endif
+
+// 1 = show colour bars instead of the clock (display bring-up), 0 = clock.
+#ifndef SHOW_COLOUR_BARS
+#define SHOW_COLOUR_BARS 1
+#endif
+
 #endif

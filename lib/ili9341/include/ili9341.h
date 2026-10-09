@@ -48,6 +48,9 @@ uint ili9341_init(const ili9341_config_t *cfg);
 void ili9341_fill_rect(int x, int y, int w, int h, uint16_t color);
 void ili9341_fill_screen(uint16_t color);
 
+// Copies a w*h block of native-endian RGB565 pixels to the screen at (x, y).
+void ili9341_blit(int x, int y, int w, int h, const uint16_t *pixels);
+
 // Character cell is 6*scale x 8*scale pixels (5x7 glyph plus 1px spacing),
 // background included, so redrawing a character never flickers.
 void ili9341_draw_char(int x, int y, char c, uint16_t fg, uint16_t bg, int scale);
