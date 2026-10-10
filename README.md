@@ -1,22 +1,27 @@
-# RP2040 ILI9341 Clock
+# Turtle Smash
 
-A digital clock on a 2.2" ILI9341 SPI TFT driven by an RP2040 USB stick, written in C
-on the Raspberry Pi Pico SDK. It has a small self-contained display driver, a
-power-on colour test and a flicker-free clock (only changed digits are redrawn), and
-you set the time over USB serial.
+A cannon game for a 2.2" ILI9341 SPI TFT driven by an RP2040 USB stick, written in
+C on the Raspberry Pi Pico SDK. An armoured turtle walks the battlefield, aims and
+fires a cannon at war-pig drones flying in overhead, with a flicker-free 30 fps
+renderer and a title + story intro on power-up. No display library: everything
+down to the ILI9341 driver, font and renderer is written from scratch.
 
 <p align="center">
-  <img src="docs/images/screenshot_clock.png" width="480" alt="Clock screen">
+  <img src="docs/images/screenshot_title.png" width="480" alt="Turtle Smash title screen">
 </p>
 
 ## Features
 
-- Minimal ILI9341 driver: init, filled rectangles, scaled 5×7 font, register readback
-- Power-on colour test (red, green, blue, white, each labelled) to check colour order
-- Large `HH:MM:SS` clock with date and day name, driven by the RP2040 hardware RTC
-- Set the time from any serial terminal, e.g. `2026-10-07 14:30:00`
-- Custom board definition for the 4 MB "RP2040 USB" stick
-- Host-side test that runs the firmware against an emulated ILI9341, with no hardware needed
+- Intro sequence: a title card, then a 4-panel story, before the game starts
+- Physics-based cannon: aim, charge power, and fire in a gravity arc, with a
+  dotted aim guide on the first round
+- Menacing war-pig drones that fly in at random height and speed; a hit bursts
+  them into pork chunks and they respawn after a pause
+- Dirty-rectangle renderer: only the screen areas that changed are recomposited
+  and sent over SPI by DMA, for a steady 30 fps on real hardware
+- Scoreboard HUD (balls left, hits) and a reset button for a new game
+- Host-side test that runs the real renderer and game logic against an emulated
+  ILI9341 panel, with no hardware needed
 
 ## Hardware
 
@@ -24,9 +29,30 @@ you set the time over USB serial.
 |---|---|
 | MCU | Generic "RP2040 USB" stick (RP2040, 4 MB flash, USB-A) — [photo](docs/images/rp2040_board.jpg), [pinout](docs/images/rp2040_pinout.jpg) |
 | Display | Red 2.2" SPI TFT, ILI9341, 240×320, 9-pin header + SD card header — [drawing](docs/images/ili9341_back.jpg) |
+| Controls | 5 momentary buttons (or a joystick module) to GND: up/down/left/right/centre, plus a reset button |
 
-See [docs/hardware.md](docs/hardware.md) for compatibility, power and backlight notes,
-and for Arduino / MicroPython library recommendations.
+See [docs/hardware.md](docs/hardware.md) for compatibility, power and backlight notes.
+
+## Controls
+
+| Input | Action |
+|---|---|
+| UP / DOWN | Aim the barrel (10°–65° above horizontal) |
+| LEFT / RIGHT | Walk |
+| CENTRE (hold, then release) | Charge power, then fire |
+| RESET | Start a new game |
+
+| Button | RP2040 USB stick |
+|---|---|
+| UP | GP26 |
+| DOWN | GP27 |
+| LEFT | GP28 |
+| RIGHT | GP15 |
+| CENTRE | GP14 |
+| RESET | GP1 |
+
+Each button switches its GPIO to GND; internal pull-ups are used, so no external
+resistors are needed. Pins are set in [`src/config.h`](src/config.h).
 
 ## Wiring
 
@@ -84,29 +110,31 @@ in `src/config.h`.
 
 Or use `picotool load -x build/src/tft_clock.uf2`.
 
-## Usage
+Already running? Open the stick's USB serial port at 1200 baud (e.g.
+`stty -F /dev/ttyACM0 1200`) to reboot it straight to the `RPI-RP2` drive, no BOOT
+button needed.
 
-On power-up you'll see the colour test, then the clock. The RTC has no battery, so
-the clock starts from the **firmware build time**. To set it, open the stick's USB
-serial port (any baud rate works for USB CDC):
+## Playing
 
-```
-$ screen /dev/ttyACM0
-2026-10-07 14:30:00        sets the clock
-?                          prints the current time
-```
+On power-up you get the title card (3 s), then the 4-panel story (2 s each), then
+the game starts. Walk the turtle, aim and hold the centre button to charge a shot
+— the longer you hold (up to about 1.3 s), the more power — and release to fire.
+War-pigs fly in from the right at a random height and speed; a direct hit bursts
+them and they respawn after a short pause. You start with 100 balls; the HUD at
+the top shows balls left and hits. Press RESET at any time, including when you run
+out of balls, to start a new game.
 
-Or in one line from Linux: `echo "$(date '+%F %T')" > /dev/ttyACM0`.
-
-The footer shows the actual SPI clock and the panel's `RDDPM` status
-(`0x9C` = awake, display on).
+The first round shows a dotted preview of the shot's arc to help you find the
+range; it's hidden after that.
 
 ## Testing without hardware
 
-`tests/host` builds the firmware for your PC against stub SDK headers and an ILI9341
-emulator that interprets the SPI command stream. It checks the init sequence, colour
-test, clock rendering, serial time setting (valid and invalid input) and partial
-redraws, and writes screenshots as PPM files:
+`tests/host` builds the renderer and game logic for your PC against stub SDK
+headers and an ILI9341 emulator that interprets the SPI/DMA command stream. It
+checks that every frame sent to the panel matches a full composite of the
+background and all layers — catching any area that changed on screen without
+being marked dirty — and writes PPM screenshots (used for the images in this
+README):
 
 ```sh
 cmake -S tests/host -B build-host
@@ -115,7 +143,7 @@ ctest --test-dir build-host --output-on-failure
 ```
 
 <p align="center">
-  <img src="docs/images/screenshot_colour_test.png" width="560" alt="Colour test frames">
+  <img src="docs/images/screenshot_game.png" width="560" alt="Turtle Smash gameplay">
 </p>
 
 ## Configuration
@@ -123,8 +151,23 @@ ctest --test-dir build-host --output-on-failure
 | Setting | Where | Default |
 |---|---|---|
 | Pins, SPI instance, SPI clock | `src/config.h` | SPI0 on GP2–GP7, 40 MHz requested |
+| Button pins | `src/config.h` | GP26/27/28/15/14/1 |
 | Orientation / colour order | `ILI9341_MADCTL` in `lib/ili9341/include/ili9341.h` | `0x28` (landscape, BGR) |
+| Cannon angle, power, charge time, recoil | `src/game_config.h` | 10°–65°, 1.3 s to full charge |
+| Pig speed, gravity, starting balls | `src/game_config.h` | — |
 | Board | `-DPICO_BOARD=...` | `rp2040_usb_stick` (`boards/`) |
+
+The turtle and barrel sprites are generated from `assets/tortoise.png` by
+`tools/make_turtle_assets.py`, which also takes an optional scale factor to
+resize the sprite (anchored at the feet and left edge). The intro images are
+generated from `assets/title.png` and `assets/story.png` by
+`tools/make_intro_assets.py`, which auto-detects and crops out the gutter
+between the 4 story panels. Re-run either after editing the source art:
+
+```sh
+python3 tools/make_turtle_assets.py assets/tortoise.png src/ [scale]
+python3 tools/make_intro_assets.py assets/title.png assets/story.png src/
+```
 
 ## Troubleshooting
 
@@ -132,10 +175,10 @@ ctest --test-dir build-host --output-on-failure
 |---|---|
 | White screen only | The backlight works but the panel isn't initialised. Check CS/DC/RESET/SCK/MOSI and a common GND, or try `SPI_BAUD` at 10 MHz. |
 | Black screen | No backlight: LED (pin 8) not connected to 3V3. |
-| Screen labelled RED shows blue | Colour order swapped: toggle bit `0x08` in `ILI9341_MADCTL`. |
-| Text mirrored or upside down | Set `ILI9341_MADCTL` to `0xE8`. |
+| Colours look wrong | Colour order swapped: toggle bit `0x08` in `ILI9341_MADCTL`. For a labelled RED/GREEN/BLUE/WHITE test screen while bringing up a new display, build with `-DSHOW_TORTOISE=0`. |
+| Image mirrored or upside down | Set `ILI9341_MADCTL` to `0xE8`. |
 | Random pixels / noise | Wires too long or poor ground: lower `SPI_BAUD`. |
-| `RDDPM 0x00` or `0xFF` | MISO not connected (harmless for drawing). |
+| Buttons don't respond | Check each GPIO switches to GND when pressed; pull-ups are enabled in firmware, no external resistors needed. |
 | No `/dev/ttyACM0` | Unplug and replug the stick; on Linux, add yourself to the `dialout` group. |
 
 ## Project layout
@@ -144,8 +187,10 @@ ctest --test-dir build-host --output-on-failure
 ├── CMakeLists.txt            top-level firmware build
 ├── cmake/                    Pico SDK import
 ├── boards/                   board header for the RP2040 USB stick
-├── src/                      application (clock, serial time setting, pin config)
+├── assets/                   source art for the sprite/intro generators
+├── src/                      game logic, renderer, input, display config
 ├── lib/ili9341/              display driver and 5×7 font
+├── tools/                    generators that turn assets/ into src/*.c
 ├── tests/host/               host build with ILI9341 emulator and SDK stubs
 └── docs/                     hardware notes, wiring diagram, images
 ```
