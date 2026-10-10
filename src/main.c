@@ -13,6 +13,7 @@
 #include "dragon.h"
 #include "ili9341.h"
 #include "input.h"
+#include "intro_images.h"
 #include "render.h"
 #include "pico/stdlib.h"
 #include "tortoise.h"
@@ -162,6 +163,7 @@ static void draw_clock(const datetime_t *t) {
     update_text(DAY_Y, day_str, shown_day, COLOR_ORANGE, DAY_SCALE);
 }
 
+#if !SHOW_TORTOISE
 // Each screen is labelled with the colour it should be. If the label says RED
 // but the screen is blue, toggle the BGR bit in ILI9341_MADCTL.
 static void colour_test(void) {
@@ -177,6 +179,23 @@ static void colour_test(void) {
         sleep_ms(600);
     }
 }
+#endif
+
+#if SHOW_TORTOISE
+// Title card, then the four story panels, before the game starts.
+static void intro_sequence(void) {
+    ili9341_blit(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, title_image);
+    sleep_ms(3000);
+
+    static const uint16_t *const panels[] = {
+        story_top_left, story_top_right, story_bottom_left, story_bottom_right,
+    };
+    for (unsigned i = 0; i < sizeof panels / sizeof panels[0]; i++) {
+        ili9341_blit(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, panels[i]);
+        sleep_ms(2000);
+    }
+}
+#endif
 
 #if SHOW_COLOUR_BARS && !SHOW_DRAGON && !SHOW_TORTOISE
 // Eight full-height bars: white, yellow, cyan, green, magenta, red, blue, black.
@@ -213,7 +232,11 @@ int main(void) {
     uint8_t power_mode = ili9341_read_reg8(ILI9341_RDDPM);
     printf("ILI9341 clock: SPI %u Hz, RDDPM 0x%02X (expect 0x9C)\n", baud, power_mode);
 
+#if SHOW_TORTOISE
+    intro_sequence();
+#else
     colour_test();
+#endif
 
 #if SHOW_TORTOISE
     tortoise_draw_scene();
