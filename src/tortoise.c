@@ -248,7 +248,7 @@ static void update(obj_t *o) {
 static void pig_launch(void) {
     pig.active = true;
     pig.fx = ILI9341_WIDTH << FP;
-    pig.vx = rnd_range(ONE * 4 / 3, 3 * ONE);
+    pig.vx = rnd_range(PIG_VX_MIN, PIG_VX_MAX);
     pig.base_y = rnd_range(PIG_Y_MIN + 2, PIG_Y_MAX);
     pig.age = 0;
     pig.x = pig.fx >> FP;

@@ -17,6 +17,10 @@
 #define CHARGE_TICKS 40 // holding CENTER this long gives full power
 #define RECOIL_PX    5  // barrel kick on firing, recovers 1 px per tick
 
+// Pig
+#define PIG_VX_MIN   (ONE)         // was 4*ONE/3, too fast to track
+#define PIG_VX_MAX   (2 * ONE)     // was 3*ONE
+
 // Walking
 #define WALK_MIN     0  // turtle offset from its starting spot, px
 #define WALK_MAX     120

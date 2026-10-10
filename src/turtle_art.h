@@ -7,21 +7,21 @@
 #define SPRITE_KEY 0xF81F // transparent pixel
 
 // Body sprite (barrel tube removed); its top-left corner is at (TURTLE_X0, TURTLE_Y0) on screen.
-#define TURTLE_W  156
-#define TURTLE_H  138
+#define TURTLE_W  104
+#define TURTLE_H  92
 #define TURTLE_X0 0
-#define TURTLE_Y0 74
+#define TURTLE_Y0 120
 extern const uint16_t turtle_body[TURTLE_H][TURTLE_W];
 
 // Barrel sprite drawn horizontally (pointing right). Pixel (i, j) is at distance
 // BARREL_U0 + i along the barrel and j - BARREL_VH across it, from the pivot.
-#define BARREL_W   53
-#define BARREL_H   19
-#define BARREL_U0  -3
-#define BARREL_VH  9
-#define BARREL_LEN 49 // muzzle distance from the pivot
-#define PIVOT_X    100 // screen position of the pivot
-#define PIVOT_Y    94
+#define BARREL_W   36
+#define BARREL_H   13
+#define BARREL_U0  -2
+#define BARREL_VH  6
+#define BARREL_LEN 33 // muzzle distance from the pivot
+#define PIVOT_X    67 // screen position of the pivot
+#define PIVOT_Y    133
 #define BARREL_ANGLE0 11  // angle of the barrel in the original picture
 extern const uint16_t turtle_barrel[BARREL_H][BARREL_W];
 
