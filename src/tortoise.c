@@ -91,13 +91,17 @@ static bool obj_pixel(const obj_t *o, int dx, int dy, uint16_t *c) {
     }
 }
 
-// Draws the pig sprites once. The pig faces left and flaps its wings, with a
-// dark outline so it reads clearly against the sky.
+// Draws the pig sprites once: a war-pig like the ones in the intro story panels
+// (glowing red eyes, a snarling mouth, armoured wings), not a cute pink pig. The
+// ears/legs/tail and wings are kept light against the night sky - a near-black
+// palette there read as a hole in the sprite rather than a menacing feature. The
+// pig faces left and flaps its wings, with a dark outline so it reads clearly
+// against the sky.
 static void build_pig(void) {
-    const uint16_t pink = RGB565(255, 150, 180), dark = RGB565(215, 100, 140),
-                   snout = RGB565(255, 195, 205), wing = RGB565(235, 240, 255),
-                   wing_shade = RGB565(165, 185, 235), outline = RGB565(120, 40, 70),
-                   eye = RGB565(10, 10, 10);
+    const uint16_t pink = RGB565(235, 80, 100), dark = RGB565(150, 35, 45),
+                   mouth = RGB565(20, 5, 6), wing = RGB565(165, 165, 175),
+                   wing_shade = RGB565(100, 100, 115), outline = RGB565(15, 4, 6),
+                   eye = RGB565(255, 25, 10), glow = RGB565(255, 170, 60);
     for (int f = 0; f < 2; f++) {
         uint16_t (*px)[PIG_W] = pig_px[f];
         for (int y = 0; y < PIG_H; y++) {
@@ -106,8 +110,8 @@ static void build_pig(void) {
                 int bx = x - 19, by = y - 13, hx = x - 8, hy = y - 13, sx = x - 2, sy = y - 14;
                 if (bx * bx * 49 + by * by * 121 <= 121 * 49) c = pink;           // body
                 if (hx * hx + hy * hy <= 49) c = pink;                            // head
-                if (sx * sx * 9 + sy * sy * 9 <= 81) c = snout;                   // snout
-                if (y >= 3 && y <= 7 && x >= 5 + (y - 3) / 2 && x <= 9 - (y - 3) / 2) c = dark; // ear
+                if (sx * sx * 9 + sy * sy * 9 <= 81) c = mouth;                   // open, snarling mouth
+                if (y >= 3 && y <= 7 && x >= 5 + (y - 3) / 2 && x <= 9 - (y - 3) / 2) c = dark; // horn-like ear
                 if (y >= 19 && ((x >= 12 && x <= 14) || (x >= 24 && x <= 26))) c = dark;        // legs
                 if (((x == 30 || x == 31) && y >= 9 && y <= 12) || (x == 29 && y == 9) ||
                     (x == 30 && y == 8) || (x == 31 && y == 8))
@@ -121,10 +125,9 @@ static void build_pig(void) {
                 px[y][x] = c;
             }
         }
-        for (int y = 12; y < 14; y++) px[y][2] = dark;                   // nostrils
-        px[14][2] = dark;
-        px[11][6] = eye; px[11][7] = eye; px[12][6] = eye; px[12][7] = eye;
-        px[11][6] = COLOR_WHITE;
+        px[12][1] = COLOR_WHITE; px[12][3] = COLOR_WHITE; // bared fangs
+        px[11][6] = eye; px[11][7] = eye; px[12][6] = eye; px[12][7] = eye; // glowing eyes
+        px[11][6] = glow;
 
         // Outline pass: transparent pixels next to the sprite become dark.
         static uint16_t out[PIG_H][PIG_W];
