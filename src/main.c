@@ -231,8 +231,7 @@ int main(void) {
 
         int ticks = 0;
         while (now >= next_tick && ticks < max_catch_up) {
-            tortoise_buttons(input_pressed());
-            tortoise_step();
+            tortoise_step(input_held(), input_pressed(), input_released());
             next_tick += tick_us;
             ticks++;
         }

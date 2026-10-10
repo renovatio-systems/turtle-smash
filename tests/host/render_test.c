@@ -10,7 +10,7 @@
 #include "render.h"
 #include "tortoise.h"
 
-extern const uint16_t tortoise_image[ILI9341_WIDTH * ILI9341_HEIGHT];
+extern const uint16_t meadow_image[ILI9341_WIDTH * ILI9341_HEIGHT];
 extern uint64_t emu_time_us;
 extern uint32_t emu_pins_low;
 
@@ -44,7 +44,7 @@ static void squares_layer(const render_target_t *t) {
 }
 
 static void stress_test(void) {
-    render_init(tortoise_image);
+    render_init(meadow_image);
     render_add_layer(squares_layer);
     srand(7);
     for (int i = 0; i < N_SQ; i++)
@@ -76,7 +76,25 @@ static void stress_test(void) {
 
 // ---- the game
 
-static const struct { int pin; } script_pins[] = {{26}, {27}, {28}, {15}, {14}};
+// Button script: {first tick, last tick, GPIO}. Covers aiming both ways, walking
+// both ways, a quick tap, a full charge, and RESET.
+static const struct { int from, to, pin; } script[] = {
+    {5, 30, 26},    // UP: aim up to the limit
+    {40, 45, 14},   // CENTER tap: weak shot
+    {50, 70, 27},   // DOWN
+    {80, 140, 15},  // RIGHT: walk right
+    {100, 160, 14}, // CENTER: charge to full and release at 160
+    {170, 200, 28}, // LEFT
+    {180, 190, 14}, // CENTER while walking
+    {210, 400, 26}, // UP: pin at the maximum angle
+    {250, 275, 14}, // CENTER: charge, high angle
+    {300, 380, 15}, // RIGHT to the end stop
+    {400, 600, 27}, // DOWN: pin at the minimum angle
+    {420, 460, 14}, {470, 480, 14}, {490, 530, 14},
+    {600, 602, 1},  // RESET
+    {620, 700, 14}, // CENTER after reset
+    {720, 760, 28}, // LEFT
+};
 
 static void game_test(void) {
     tortoise_draw_scene();
@@ -88,14 +106,12 @@ static void game_test(void) {
     for (int tick = 0; tick < 900; tick++) {
         emu_time_us += 1000000 / 30;
         emu_pins_low = 0;
-        if (tick >= 5 && tick < 9) emu_pins_low |= 1u << 0; // SET: auto-fire on
-        if (tick % 25 < 4) emu_pins_low |= 1u << script_pins[(tick / 25) % 5].pin;
-        if (tick == 600 || tick == 601 || tick == 602) emu_pins_low |= 1u << 1; // RESET
+        for (unsigned i = 0; i < sizeof script / sizeof script[0]; i++)
+            if (tick >= script[i].from && tick <= script[i].to) emu_pins_low |= 1u << script[i].pin;
         input_poll((uint32_t)(emu_time_us / 1000));
         input_poll((uint32_t)(emu_time_us / 1000) + 20);
 
-        tortoise_buttons(input_pressed());
-        tortoise_step();
+        tortoise_step(input_held(), input_pressed(), input_released());
         render_flush();
 
         const render_stats_t *rs = render_stats();
@@ -105,6 +121,11 @@ static void game_test(void) {
         int bad = compare_screen();
         CHECK(bad == 0, "game tick %d: %d pixels differ", tick, bad);
         if (bad) break;
+        if (tick == 150 || tick == 265 || tick == 340) {
+            char name[32];
+            snprintf(name, sizeof name, "game_tick%d", tick);
+            save_ppm(name);
+        }
     }
     printf("game: 900 ticks, avg %lu px/frame, %lu frames over a quarter screen, max %u rects\n",
            px_total / 900, frames_over, (unsigned)worst_rects);

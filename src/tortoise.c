@@ -1,10 +1,9 @@
-// The armoured tortoise picture (src/tortoise_image.c, generated from
-// assets/tortoise.png) with cannonballs fired from its cannon at a flying pig.
-// Each player gets START_BALLS balls and scores a hit when a ball touches the
-// pig; RESET starts a new game. The picture is a static background: whatever
+// The game scene: the armoured tortoise (turtle.c) fires cannonballs at a flying
+// pig. Each player gets START_BALLS balls and scores a hit when a ball touches
+// the pig; RESET starts a new game. The meadow is a static background: whatever
 // moves reports its old and new boxes to the dirty-rectangle renderer
-// (render.c), which redraws just those areas from the picture plus the pig,
-// the objects and the scoreboard layered on top. step() runs at 30 ticks/s.
+// (render.c), which redraws just those areas from the meadow plus the layers on
+// top. step() runs at 30 ticks/s.
 
 #include <stdbool.h>
 #include <stdio.h>
@@ -12,22 +11,21 @@
 #include <string.h>
 
 #include "ili9341.h"
+#include "game_config.h"
 #include "input.h"
 #include "physics.h"
 #include "render.h"
 #include "tortoise.h"
+#include "turtle.h"
+#include "turtle_art.h"
 
-extern const uint16_t tortoise_image[ILI9341_WIDTH * ILI9341_HEIGHT];
+extern const uint16_t meadow_image[ILI9341_WIDTH * ILI9341_HEIGHT];
 
-// Muzzle of the cannon and the grass line, in screen pixels.
-#define MUZZLE_X  146
-#define MUZZLE_Y  85
+// The grass line, in screen pixels.
 #define GROUND_Y  206
 
 #define MAX_OBJS  32
-#define GRAVITY   36 // 0.14 px/tick^2
 
-#define START_BALLS 100
 #define HUD_H       30 // scoreboard strip at the top of the screen
 #define PIG_W       32
 #define PIG_H       22
@@ -45,7 +43,7 @@ typedef struct {
 } obj_t;
 
 static obj_t objs[MAX_OBJS];
-static bool auto_fire; // off by default so every ball is the player's
+static int rounds_played; // the aim guide only shows in the first one
 
 static int balls_left = START_BALLS, hits;
 static uint32_t tick; // game ticks since start
@@ -206,28 +204,15 @@ static obj_t *spawn(int kind, int x, int y, int vx, int vy, int r, int life) {
     return NULL;
 }
 
-// Fires one ball from the muzzle if any are left.
-static void launch(int vx, int vy, int g) {
+// Launches a ball from the muzzle with the turtle's chosen velocity.
+static void launch(const turtle_shot_t *shot) {
     if (balls_left <= 0) return;
-    spawn(FLASH, MUZZLE_X + 3, MUZZLE_Y - 1, 0, 0, 9, 7);
-    obj_t *ball = spawn(BALL, MUZZLE_X + 2, MUZZLE_Y, vx, vy, 5, 0);
+    spawn(FLASH, shot->x, shot->y, 0, 0, 9, 7);
+    obj_t *ball = spawn(BALL, shot->x, shot->y, shot->vx, shot->vy, 5, 0);
     if (!ball) return;
-    ball->g = g;
+    ball->g = GRAVITY;
     balls_left--;
     hud_draw();
-}
-
-static void fire(void) {
-    // Barrel points about 10 degrees above horizontal; vary speed and elevation.
-    int speed = rnd_range(4 * ONE, 8 * ONE);
-    int vx = speed;
-    int vy = -rnd_range(ONE / 3, 4 * ONE);
-    launch(vx, vy, GRAVITY);
-}
-
-// Straight-ish shot in direction (dx, dy), each -1, 0 or 1, with little gravity.
-static void fire_dir(int dx, int dy) {
-    launch(dx * 7 * ONE, dy * 7 * ONE, GRAVITY / 5);
 }
 
 static void update(obj_t *o) {
@@ -316,10 +301,14 @@ void tortoise_draw_scene(void) {
     static bool built;
     if (!built) {
         build_pig();
-        render_init(tortoise_image);
+        render_init(meadow_image);
+        render_add_layer(turtle_layer);
         render_add_layer(pig_layer);
         render_add_layer(objs_layer);
+        render_add_layer(turtle_overlay_layer);
         render_add_layer(hud_layer);
+        turtle_reset();
+        turtle_set_guide(true);
         built = true;
     }
     hud_draw();
@@ -327,33 +316,25 @@ void tortoise_draw_scene(void) {
     render_flush();
 }
 
-void tortoise_buttons(uint8_t pressed) {
-    if (pressed & JOY_UP) fire_dir(0, -1);
-    if (pressed & JOY_DOWN) fire_dir(0, 1);
-    if (pressed & JOY_LEFT) fire_dir(-1, 0);
-    if (pressed & JOY_RIGHT) fire_dir(1, 0);
-    if (pressed & JOY_MID) fire();
-    if (pressed & JOY_SET) auto_fire = !auto_fire;
-    if (pressed & JOY_RESET) {
-        for (int i = 0; i < MAX_OBJS; i++) objs[i].active = false;
-        balls_left = START_BALLS;
-        hits = 0;
-        pig.active = false;
-        pig.respawn_at = tick; // pig returns on the next tick
-        hud_draw();
-        render_dirty_all();
-    }
+static void new_game(void) {
+    for (int i = 0; i < MAX_OBJS; i++) objs[i].active = false;
+    balls_left = START_BALLS;
+    hits = 0;
+    pig.active = false;
+    pig.respawn_at = tick; // pig returns on the next tick
+    rounds_played++;
+    turtle_reset();
+    turtle_set_guide(rounds_played == 0);
+    hud_draw();
+    render_dirty_all();
 }
 
-void tortoise_step(void) {
-    static uint32_t next_fire;
+void tortoise_step(uint8_t held, uint8_t pressed, uint8_t released) {
     tick++;
+    if (pressed & JOY_RESET) new_game();
 
-    if (!next_fire) next_fire = tick + 24;
-    if ((int32_t)(tick - next_fire) >= 0) {
-        if (auto_fire) fire();
-        next_fire = tick + (uint32_t)rnd_range(15, 45);
-    }
+    turtle_shot_t shot;
+    if (turtle_step(held, pressed, released, balls_left > 0, &shot)) launch(&shot);
     for (int i = 0; i < MAX_OBJS; i++)
         if (objs[i].active) update(&objs[i]);
     pig_move();

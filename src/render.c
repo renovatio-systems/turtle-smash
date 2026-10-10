@@ -126,6 +126,15 @@ bool render_clip(const render_target_t *t, int x, int y, int w, int h, int *x0, 
     return *x0 < *x1 && *y0 < *y1;
 }
 
+void render_fill(const render_target_t *t, int x, int y, int w, int h, uint16_t color) {
+    int x0, y0, x1, y1;
+    if (!render_clip(t, x, y, w, h, &x0, &y0, &x1, &y1)) return;
+    for (int sy = y0; sy < y1; sy++) {
+        uint16_t *p = render_px(t, x0, sy);
+        for (int sx = x0; sx < x1; sx++) *p++ = color;
+    }
+}
+
 void render_text(const render_target_t *t, int x, int y, const char *s, uint16_t fg, uint16_t bg_col, int scale) {
     int cw = 6 * scale, ch = 8 * scale;
     for (; *s; s++, x += cw) {

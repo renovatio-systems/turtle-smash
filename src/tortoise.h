@@ -7,12 +7,9 @@
 // display is initialised).
 void tortoise_draw_scene(void);
 
-// Advances the game by one fixed 1/30 s tick. The caller then runs render_flush().
-void tortoise_step(void);
-
-// Handles newly pressed buttons (JOY_* bits from input.h): direction buttons
-// fire that way, MID fires the normal arc, SET toggles auto-fire and RESET
-// starts a new game. Call before tortoise_step().
-void tortoise_buttons(uint8_t pressed);
+// Advances the game by one fixed 1/30 s tick. `held`, `pressed` and `released` are
+// JOY_* masks from input.h (see turtle_step for the controls; RESET starts a new
+// game). The caller then runs render_flush().
+void tortoise_step(uint8_t held, uint8_t pressed, uint8_t released);
 
 #endif

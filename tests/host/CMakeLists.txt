@@ -33,7 +33,9 @@ add_executable(render_emu
     ${REPO_ROOT}/src/input.c
     ${REPO_ROOT}/src/physics.c
     ${REPO_ROOT}/src/tortoise.c
-    ${REPO_ROOT}/src/tortoise_image.c
+    ${REPO_ROOT}/src/turtle.c
+    ${REPO_ROOT}/src/turtle_art.c
+    ${REPO_ROOT}/src/meadow_image.c
     ${REPO_ROOT}/lib/ili9341/src/ili9341.c
     ${REPO_ROOT}/lib/ili9341/src/font5x7.c
 )

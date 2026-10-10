@@ -35,6 +35,8 @@ static inline uint16_t *render_px(const render_target_t *t, int sx, int sy) {
 }
 // Intersects the box with the target; returns false if they do not overlap.
 bool render_clip(const render_target_t *t, int x, int y, int w, int h, int *x0, int *y0, int *x1, int *y1);
+// Fills a box (clipped to the target).
+void render_fill(const render_target_t *t, int x, int y, int w, int h, uint16_t color);
 // Draws text in the lib's 5x7 font (cell 6*scale x 8*scale, background included).
 void render_text(const render_target_t *t, int x, int y, const char *s, uint16_t fg, uint16_t bg, int scale);
 
