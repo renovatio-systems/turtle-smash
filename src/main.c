@@ -1,4 +1,4 @@
-// RP2040 + 2.2" ILI9341 SPI TFT: colour test, then a digital clock.
+// RP2040 + 3.5" ILI9488 SPI TFT: colour test, then a digital clock.
 //
 // The RP2040 RTC has no battery backup, so on power-up the clock starts from
 // the firmware build time. Set the real time over USB serial by sending:
@@ -11,7 +11,7 @@
 #include "config.h"
 #include "hardware/rtc.h"
 #include "dragon.h"
-#include "ili9341.h"
+#include "ili9488.h"
 #include "input.h"
 #include "intro_images.h"
 #include "render.h"
@@ -96,7 +96,7 @@ static bool handle_line(const char *line) {
     } else if (line[0] == '?') {
         print_time();
         printf("Display: SPI %u Hz, RDDPM 0x%02X (0x9C = on, 0x00/0xFF = no reply)\n",
-               spi_baud, ili9341_read_reg8(ILI9341_RDDPM));
+               spi_baud, ili9488_read_reg8(ILI9488_RDDPM));
 #if SHOW_TORTOISE
         const render_stats_t *rs = render_stats();
         printf("Render: last flush %u rects, %u px, %u us (worst %u us)\n", (unsigned)rs->rects,
@@ -133,15 +133,15 @@ static bool poll_usb(void) {
 
 static void draw_centered(int y, const char *s, uint16_t fg, uint16_t bg, int scale) {
     int w = (int)strlen(s) * 6 * scale;
-    ili9341_draw_string((ILI9341_WIDTH - w) / 2, y, s, fg, bg, scale);
+    ili9488_draw_string((ILI9488_WIDTH - w) / 2, y, s, fg, bg, scale);
 }
 
 // Draws only the characters of `now` that differ from what is on screen.
 static void update_text(int y, const char *now, char *shown, uint16_t fg, int scale) {
-    int x = (ILI9341_WIDTH - (int)strlen(now) * 6 * scale) / 2;
+    int x = (ILI9488_WIDTH - (int)strlen(now) * 6 * scale) / 2;
     for (size_t i = 0; now[i]; i++, x += 6 * scale) {
         if (now[i] != shown[i]) {
-            ili9341_draw_char(x, y, now[i], fg, COLOR_BLACK, scale);
+            ili9488_draw_char(x, y, now[i], fg, COLOR_BLACK, scale);
             shown[i] = now[i];
         }
     }
@@ -165,7 +165,7 @@ static void draw_clock(const datetime_t *t) {
 
 #if !SHOW_TORTOISE
 // Each screen is labelled with the colour it should be. If the label says RED
-// but the screen is blue, toggle the BGR bit in ILI9341_MADCTL.
+// but the screen is blue, toggle the BGR bit in ILI9488_MADCTL.
 static void colour_test(void) {
     static const struct {
         uint16_t color;
@@ -174,7 +174,7 @@ static void colour_test(void) {
         {COLOR_RED, "RED"}, {COLOR_GREEN, "GREEN"}, {COLOR_BLUE, "BLUE"}, {COLOR_WHITE, "WHITE"},
     };
     for (unsigned i = 0; i < sizeof steps / sizeof steps[0]; i++) {
-        ili9341_fill_screen(steps[i].color);
+        ili9488_fill_screen(steps[i].color);
         draw_centered(108, steps[i].name, COLOR_BLACK, steps[i].color, 4);
         sleep_ms(600);
     }
@@ -184,14 +184,14 @@ static void colour_test(void) {
 #if SHOW_TORTOISE
 // Title card, then the four story panels, before the game starts.
 static void intro_sequence(void) {
-    ili9341_blit(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, title_image);
+    ili9488_blit(0, 0, ILI9488_WIDTH, ILI9488_HEIGHT, title_image);
     sleep_ms(3000);
 
     static const uint16_t *const panels[] = {
         story_top_left, story_top_right, story_bottom_left, story_bottom_right,
     };
     for (unsigned i = 0; i < sizeof panels / sizeof panels[0]; i++) {
-        ili9341_blit(0, 0, ILI9341_WIDTH, ILI9341_HEIGHT, panels[i]);
+        ili9488_blit(0, 0, ILI9488_WIDTH, ILI9488_HEIGHT, panels[i]);
         sleep_ms(2000);
     }
 }
@@ -206,8 +206,8 @@ static void colour_bars(void) {
     };
     int n = sizeof bars / sizeof bars[0];
     for (int i = 0; i < n; i++) {
-        int x0 = i * ILI9341_WIDTH / n, x1 = (i + 1) * ILI9341_WIDTH / n;
-        ili9341_fill_rect(x0, 0, x1 - x0, ILI9341_HEIGHT, bars[i]);
+        int x0 = i * ILI9488_WIDTH / n, x1 = (i + 1) * ILI9488_WIDTH / n;
+        ili9488_fill_rect(x0, 0, x1 - x0, ILI9488_HEIGHT, bars[i]);
     }
 }
 #endif
@@ -217,7 +217,7 @@ int main(void) {
     rtc_init();
     set_clock_from_build_time();
 
-    const ili9341_config_t cfg = {
+    const ili9488_config_t cfg = {
         .spi = TFT_SPI,
         .pin_sck = PIN_SCK,
         .pin_mosi = PIN_MOSI,
@@ -228,9 +228,9 @@ int main(void) {
         .pin_bl = PIN_BL,
         .baud = SPI_BAUD,
     };
-    uint baud = spi_baud = ili9341_init(&cfg);
-    uint8_t power_mode = ili9341_read_reg8(ILI9341_RDDPM);
-    printf("ILI9341 clock: SPI %u Hz, RDDPM 0x%02X (expect 0x9C)\n", baud, power_mode);
+    uint baud = spi_baud = ili9488_init(&cfg);
+    uint8_t power_mode = ili9488_read_reg8(ILI9488_RDDPM);
+    printf("ILI9488 clock: SPI %u Hz, RDDPM 0x%02X (expect 0x9C)\n", baud, power_mode);
 
 #if SHOW_TORTOISE
     intro_sequence();
@@ -285,8 +285,8 @@ int main(void) {
 #endif
 
     char info[40];
-    ili9341_fill_screen(COLOR_BLACK);
-    draw_centered(12, "RP2040 + ILI9341", COLOR_YELLOW, COLOR_BLACK, 2);
+    ili9488_fill_screen(COLOR_BLACK);
+    draw_centered(12, "RP2040 + ILI9488", COLOR_YELLOW, COLOR_BLACK, 2);
     snprintf(info, sizeof info, "SPI %u.%02u MHz  RDDPM 0x%02X", baud / 1000000,
              (baud % 1000000) / 10000, power_mode);
     draw_centered(212, info, COLOR_GREY, COLOR_BLACK, 1);

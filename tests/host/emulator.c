@@ -1,6 +1,7 @@
 // Host-side test harness: implements the stubbed Pico SDK calls, emulates the
-// ILI9341's SPI command protocol into a 320x240 framebuffer, and drives the
-// firmware's main() through a scripted scenario via its sleep_ms() calls.
+// ILI9488's SPI command protocol into a 480x320 framebuffer (18-bit pixels, three
+// bytes each), and drives the firmware's main() through a scripted scenario via
+// its sleep_ms() calls.
 //
 // The firmware never returns from main(), so the scenario ends by calling
 // exit() from inside sleep_ms(). Screenshots are written as PPM files.
@@ -11,14 +12,14 @@
 #include "config.h"
 #include "hardware/rtc.h"
 #include "hardware/spi.h"
-#include "ili9341.h"
+#include "ili9488.h"
 
 #ifndef EMU_OUTPUT_DIR
 #define EMU_OUTPUT_DIR "."
 #endif
 
-#define W ILI9341_WIDTH
-#define H ILI9341_HEIGHT
+#define W ILI9488_WIDTH
+#define H ILI9488_HEIGHT
 
 static int failures;
 #define CHECK(cond, ...)                                     \
@@ -39,19 +40,20 @@ static struct {
     uint8_t args[4];
     int nargs;
     int x0, x1, y0, y1, px, py;
-    int hi; // first byte of a pixel, -1 if none pending
-    int madctl;
+    uint8_t pix[3]; // bytes of the pixel being received
+    int npix;
+    int madctl, pixfmt;
     bool awake, on;
     int writes_without_cs;
     int pixels_out_of_window;
-    uint16_t fb[H][W];
-} lcd = {.dc = true, .cs = true, .cmd = -1, .hi = -1, .madctl = -1};
+    uint16_t fb[H][W]; // stored as RGB565: the panel's 18-bit value, truncated
+} lcd = {.dc = true, .cs = true, .cmd = -1, .madctl = -1, .pixfmt = -1};
 
 static void lcd_byte(uint8_t b) {
     if (!lcd.dc) {
         lcd.cmd = b;
         lcd.nargs = 0;
-        lcd.hi = -1;
+        lcd.npix = 0;
         if (b == 0x2C) { lcd.px = lcd.x0; lcd.py = lcd.y0; }
         if (b == 0x11) lcd.awake = true;
         if (b == 0x29) lcd.on = true;
@@ -70,14 +72,18 @@ static void lcd_byte(uint8_t b) {
     case 0x36:
         lcd.madctl = b;
         break;
-    case 0x2C: // memory write
-        if (lcd.hi < 0) { lcd.hi = b; break; }
+    case 0x3A: // pixel format: the driver must ask for 18 bits per pixel
+        lcd.pixfmt = b;
+        break;
+    case 0x2C: // memory write, three bytes per pixel: R G B (RGB666, top six bits each)
+        lcd.pix[lcd.npix++] = b;
+        if (lcd.npix < 3) break;
+        lcd.npix = 0;
         if (lcd.py > lcd.y1 || lcd.px >= W || lcd.py >= H) {
             lcd.pixels_out_of_window++;
         } else {
-            lcd.fb[lcd.py][lcd.px] = (uint16_t)(lcd.hi << 8 | b);
+            lcd.fb[lcd.py][lcd.px] = (uint16_t)((lcd.pix[0] >> 3) << 11 | (lcd.pix[1] >> 2) << 5 | lcd.pix[2] >> 3);
         }
-        lcd.hi = -1;
         if (++lcd.px > lcd.x1) { lcd.px = lcd.x0; lcd.py++; }
         break;
     default:
@@ -125,7 +131,7 @@ void gpio_put(uint pin, bool value) {
 
 uint spi_init(spi_inst_t *spi, uint baudrate) {
     (void)spi; (void)baudrate;
-    return 31250000; // 125 MHz / 4, what the RP2040 gives for 40 MHz
+    return 12500000; // 125 MHz / 10, what the RP2040 gives for SPI_BAUD (15 MHz)
 }
 
 uint spi_set_baudrate(spi_inst_t *spi, uint baudrate) {
@@ -140,9 +146,11 @@ int spi_write_blocking(spi_inst_t *spi, const uint8_t *src, size_t len) {
     return (int)len;
 }
 
+// Reads come back with the one dummy bit the panel sends first, so the 0x9C
+// status (awake, display on) arrives as 0x4E then 0x00, shifted left by one bit.
 int spi_read_blocking(spi_inst_t *spi, uint8_t repeated_tx, uint8_t *dst, size_t len) {
     (void)spi; (void)repeated_tx;
-    for (size_t i = 0; i < len; i++) dst[i] = 0x9C; // awake, display on
+    for (size_t i = 0; i < len; i++) dst[i] = i == 0 ? 0x4E : 0x00;
     return (int)len;
 }
 
@@ -175,12 +183,9 @@ void spi_set_format(spi_inst_t *spi, uint data_bits, int cpol, int cpha, int ord
     (void)spi; (void)data_bits; (void)cpol; (void)cpha; (void)order;
 }
 
-void emu_dma_transfer(const uint16_t *src, uint count) {
+void emu_dma_transfer(const uint8_t *src, uint count) {
     if (lcd.cs) lcd.writes_without_cs++;
-    for (uint i = 0; i < count; i++) { // 16-bit frames go out MSB first
-        lcd_byte(src[i] >> 8);
-        lcd_byte(src[i] & 0xFF);
-    }
+    for (uint i = 0; i < count; i++) lcd_byte(src[i]);
 }
 
 // ------------------------------------------------------------- scenario
@@ -211,7 +216,8 @@ static bool rtc_is(int y, int mo, int d, int h, int mi, int s) {
 static void loop_iteration(int frame) {
     switch (frame) {
     case 1:
-        CHECK(lcd.madctl == ILI9341_MADCTL, "MADCTL 0x%02X", lcd.madctl);
+        CHECK(lcd.madctl == ILI9488_MADCTL, "MADCTL 0x%02X", lcd.madctl);
+        CHECK(lcd.pixfmt == 0x66, "pixel format 0x%02X, expected 0x66 (18 bits)", lcd.pixfmt);
         CHECK(lcd.awake && lcd.on, "panel not woken / switched on");
         CHECK(count_pixels(0, 70, W, 48, COLOR_WHITE) > 500, "time not drawn");
         CHECK(count_pixels(0, 140, W, 24, COLOR_CYAN) > 100, "date not drawn");
@@ -231,8 +237,10 @@ static void loop_iteration(int frame) {
         break;
     case 4:
         // "Sunday" is centred in a 9-character field with one leading blank cell,
-        // so the first cell (x 79-96 at scale 3) must have been erased.
-        CHECK(count_pixels(79, 175, 18, 24, COLOR_BLACK) == 18 * 24, "old day name not erased");
+        // so the first cell (18 px wide at scale 3, field centred on the panel)
+        // must have been erased.
+        int field_x = (W - 9 * 6 * 3) / 2;
+        CHECK(count_pixels(field_x, 175, 18, 24, COLOR_BLACK) == 18 * 24, "old day name not erased");
         save_ppm("screen_rollover");
 
         CHECK(lcd.writes_without_cs == 0, "%d SPI writes with CS high", lcd.writes_without_cs);

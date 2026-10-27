@@ -25,7 +25,10 @@
 
 #define GAME_FPS 30 // fixed game tick rate
 
-#define SPI_BAUD (40 * 1000 * 1000) // gives 31.25 MHz with the 125 MHz default clock
+// The ILI9488's 4-wire write cycle is about 66 ns, so keep the clock near 15 MHz.
+// The RP2040 gives 12.5 MHz for this request with the 125 MHz default clock; drop it if the panel
+// shows noise, or raise it if your module allows more.
+#define SPI_BAUD (15 * 1000 * 1000)
 
 // 1 = show the armoured tortoise firing cannonballs instead of the clock.
 #ifndef SHOW_TORTOISE

@@ -10,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "ili9341.h"
+#include "ili9488.h"
 #include "game_config.h"
 #include "input.h"
 #include "physics.h"
@@ -19,7 +19,7 @@
 #include "turtle.h"
 #include "turtle_art.h"
 
-extern const uint16_t meadow_image[ILI9341_WIDTH * ILI9341_HEIGHT];
+extern const uint16_t meadow_image[GAME_W * GAME_H];
 
 // The grass line, in screen pixels.
 #define GROUND_Y  206
@@ -149,16 +149,16 @@ static void build_pig(void) {
 static void hud_draw(void) {
     snprintf(hud_balls, sizeof hud_balls, "BALLS %3d", balls_left);
     snprintf(hud_hits, sizeof hud_hits, "HITS %3d", hits);
-    render_dirty(0, 0, ILI9341_WIDTH, HUD_H);
+    render_dirty(0, 0, GAME_W, HUD_H);
 }
 
 static void hud_layer(const render_target_t *t) {
     if (t->y >= HUD_H) return;
     render_text(t, 4, 2, hud_balls, balls_left ? COLOR_YELLOW : COLOR_RED, COLOR_BLACK, 2);
-    render_text(t, ILI9341_WIDTH - 8 * 12 - 4, 2, hud_hits, COLOR_GREEN, COLOR_BLACK, 2);
+    render_text(t, GAME_W - 8 * 12 - 4, 2, hud_hits, COLOR_GREEN, COLOR_BLACK, 2);
     if (!balls_left) {
         const char *msg = "  OUT OF BALLS - PRESS RESET  ";
-        render_text(t, (ILI9341_WIDTH - (int)strlen(msg) * 6) / 2, 20, msg, COLOR_GREY, COLOR_BLACK, 1);
+        render_text(t, (GAME_W - (int)strlen(msg) * 6) / 2, 20, msg, COLOR_GREY, COLOR_BLACK, 1);
     }
 }
 
@@ -231,7 +231,7 @@ static void update(obj_t *o) {
             o->y = GROUND_Y << FP;
             dead = hit_ground = true;
         }
-        if ((o->x >> FP) > ILI9341_WIDTH + o->r || (o->x >> FP) < -o->r ||
+        if ((o->x >> FP) > GAME_W + o->r || (o->x >> FP) < -o->r ||
             (o->y >> FP) < -o->r)
             dead = true;
     } else {
@@ -250,7 +250,7 @@ static void update(obj_t *o) {
 
 static void pig_launch(void) {
     pig.active = true;
-    pig.fx = ILI9341_WIDTH << FP;
+    pig.fx = GAME_W << FP;
     pig.vx = rnd_range(PIG_VX_MIN, PIG_VX_MAX);
     pig.base_y = rnd_range(PIG_Y_MIN + 2, PIG_Y_MAX);
     pig.age = 0;

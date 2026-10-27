@@ -13,7 +13,7 @@ usage: make_intro_assets.py assets/title.png assets/story.png src/
 import sys
 from PIL import Image
 
-W, H = 320, 240
+W, H = 480, 320  # the panel size: intro art is shown unscaled
 
 NAMES = ["story_top_left", "story_top_right", "story_bottom_left", "story_bottom_right"]
 

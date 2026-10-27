@@ -4,10 +4,10 @@
 
 #include <stdint.h>
 
-extern const uint16_t title_image[320 * 240];
-extern const uint16_t story_top_left[320 * 240];
-extern const uint16_t story_top_right[320 * 240];
-extern const uint16_t story_bottom_left[320 * 240];
-extern const uint16_t story_bottom_right[320 * 240];
+extern const uint16_t title_image[480 * 320];
+extern const uint16_t story_top_left[480 * 320];
+extern const uint16_t story_top_right[480 * 320];
+extern const uint16_t story_bottom_left[480 * 320];
+extern const uint16_t story_bottom_right[480 * 320];
 
 #endif

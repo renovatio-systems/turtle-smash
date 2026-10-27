@@ -4,11 +4,18 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Dirty-rectangle renderer. The background is a static 320x240 RGB565 image in
-// flash. Game code reports every screen area that changed (render_dirty); at the
-// end of each tick render_flush() merges those rectangles and, for each one,
-// composites background + layers into a small RAM strip and sends it over SPI
-// by DMA (one strip is composed while the previous one is being sent).
+// The game is drawn on a GAME_W x GAME_H canvas. The panel shows it scaled by
+// 4/3 (480 x 320): each 4 panel pixels come from 3 canvas pixels, so the game
+// keeps its proportions and the whole screen is used.
+#define GAME_W 360
+#define GAME_H 240
+
+// Dirty-rectangle renderer. The background is a static GAME_W x GAME_H RGB565
+// image in flash. Game code reports every canvas area that changed (render_dirty);
+// at the end of each tick render_flush() merges those rectangles and, for each
+// one, composites background + layers into a small RAM block, expands it to panel
+// pixels and sends it over SPI by DMA (one block is composed while the previous
+// one is being sent).
 
 // A block of the screen being composited: pixel (sx, sy) is buf[(sy - y) * w + (sx - x)].
 typedef struct {

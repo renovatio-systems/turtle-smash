@@ -3,13 +3,17 @@
 #include <string.h>
 
 #include "font5x7.h"
-#include "ili9341.h"
+#include "ili9488.h"
 #include "pico/stdlib.h"
 
 #define RECT_MAX    48
 #define MAX_LAYERS  6
-#define STRIP_PIX   4096 // two strips of 8 KB; a 320 px wide rect is sent 12 rows at a time
-#define MERGE_SLACK 128  // merge near-touching rects if that costs this few extra pixels
+#define MERGE_SLACK 128 // merge near-touching rects if that costs this few extra pixels
+
+// Canvas rows composed at a time. Four canvas rows cover at most six panel rows.
+#define BLOCK_ROWS      4
+#define BLOCK_PANEL_ROWS 8
+#define PANEL_BLOCK_BYTES (BLOCK_PANEL_ROWS * ILI9488_WIDTH * ILI9488_BYTES_PER_PIXEL)
 
 typedef struct {
     int x0, y0, x1, y1; // half-open: x0 <= x < x1
@@ -20,8 +24,14 @@ static render_layer_fn layers[MAX_LAYERS];
 static int n_layers;
 static rect_t rects[RECT_MAX];
 static int n_rects;
-static uint16_t strip[2][STRIP_PIX];
+static uint16_t canvas_block[BLOCK_ROWS * GAME_W];
+static uint8_t panel_block[2][PANEL_BLOCK_BYTES]; // one is expanded while the other is sent
 static render_stats_t stats;
+
+// The canvas is scaled 4/3: panel pixel p shows canvas pixel 3p/4, and canvas
+// pixel c starts at panel pixel ceil(4c/3).
+static int canvas_of_panel(int p) { return p * 3 / 4; }
+static int panel_of_canvas(int c) { return (4 * c + 2) / 3; }
 
 static int area(rect_t r) { return (r.x1 - r.x0) * (r.y1 - r.y0); }
 
@@ -55,8 +65,8 @@ void render_dirty(int x, int y, int w, int h) {
     rect_t r = {x, y, x + w, y + h};
     if (r.x0 < 0) r.x0 = 0;
     if (r.y0 < 0) r.y0 = 0;
-    if (r.x1 > ILI9341_WIDTH) r.x1 = ILI9341_WIDTH;
-    if (r.y1 > ILI9341_HEIGHT) r.y1 = ILI9341_HEIGHT;
+    if (r.x1 > GAME_W) r.x1 = GAME_W;
+    if (r.y1 > GAME_H) r.y1 = GAME_H;
     if (r.x0 >= r.x1 || r.y0 >= r.y1) return;
 
     for (;;) {
@@ -82,12 +92,12 @@ void render_dirty(int x, int y, int w, int h) {
 
 void render_dirty_all(void) {
     n_rects = 0;
-    rects[n_rects++] = (rect_t){0, 0, ILI9341_WIDTH, ILI9341_HEIGHT};
+    rects[n_rects++] = (rect_t){0, 0, GAME_W, GAME_H};
 }
 
 void render_compose(const render_target_t *t) {
     for (int row = 0; row < t->h; row++)
-        memcpy(&t->buf[row * t->w], &bg[(t->y + row) * ILI9341_WIDTH + t->x], (size_t)t->w * 2);
+        memcpy(&t->buf[row * t->w], &bg[(t->y + row) * GAME_W + t->x], (size_t)t->w * 2);
     for (int i = 0; i < n_layers; i++) layers[i](t);
 }
 
@@ -98,16 +108,27 @@ void render_flush(void) {
 
     for (int i = 0; i < n_rects; i++) {
         rect_t r = rects[i];
-        int w = r.x1 - r.x0, rows = STRIP_PIX / w;
+        int w = r.x1 - r.x0;
+        int px0 = panel_of_canvas(r.x0), px1 = panel_of_canvas(r.x1);
         pixels += (uint32_t)area(r);
-        for (int y = r.y0; y < r.y1; y += rows) {
-            render_target_t t = {strip[cur], r.x0, y, w, r.y1 - y < rows ? r.y1 - y : rows};
+        for (int y = r.y0; y < r.y1; y += BLOCK_ROWS) {
+            int rows = r.y1 - y < BLOCK_ROWS ? r.y1 - y : BLOCK_ROWS;
+            render_target_t t = {canvas_block, r.x0, y, w, rows};
             render_compose(&t);
-            ili9341_blit_dma(t.x, t.y, t.w, t.h, t.buf); // waits for the previous strip first
+
+            // Expand the composed canvas rows to the panel rows they cover.
+            int py0 = panel_of_canvas(y), py1 = panel_of_canvas(y + rows);
+            uint8_t *out = panel_block[cur];
+            for (int py = py0; py < py1; py++) {
+                const uint16_t *src = &canvas_block[(canvas_of_panel(py) - y) * w];
+                for (int px = px0; px < px1; px++, out += ILI9488_BYTES_PER_PIXEL)
+                    ili9488_pack(src[canvas_of_panel(px) - r.x0], out);
+            }
+            ili9488_blit_dma(px0, py0, px1 - px0, py1 - py0, panel_block[cur]); // waits for the previous block first
             cur ^= 1;
         }
     }
-    ili9341_wait();
+    ili9488_wait();
 
     stats.rects = (uint32_t)n_rects;
     stats.pixels = pixels;

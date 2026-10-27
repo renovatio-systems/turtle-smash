@@ -1,10 +1,10 @@
 # Turtle Smash
 
-A cannon game for a 2.2" ILI9341 SPI TFT driven by an RP2040 USB stick, written in
-C on the Raspberry Pi Pico SDK. An armoured turtle walks the battlefield, aims and
-fires a cannon at war-pig drones flying in overhead, with a flicker-free 30 fps
-renderer and a title + story intro on power-up. No display library: everything
-down to the ILI9341 driver, font and renderer is written from scratch.
+A cannon game for a 3.5" ILI9488 SPI TFT (480×320) driven by an RP2040 USB stick,
+written in C on the Raspberry Pi Pico SDK. An armoured turtle walks the battlefield,
+aims and fires a cannon at war-pig drones flying in overhead, with a flicker-free
+30 fps renderer and a title + story intro on power-up. No display library: everything
+down to the ILI9488 driver, font and renderer is written from scratch.
 
 <p align="center">
   <img src="docs/images/screenshot_title.png" width="480" alt="Turtle Smash title screen">
@@ -17,18 +17,20 @@ down to the ILI9341 driver, font and renderer is written from scratch.
   dotted aim guide on the first round
 - Menacing war-pig drones that fly in at random height and speed; a hit bursts
   them into pork chunks and they respawn after a pause
+- The game is drawn on a 360×240 canvas and shown scaled 4/3 to fill the 480×320
+  panel, so proportions stay true
 - Dirty-rectangle renderer: only the screen areas that changed are recomposited
   and sent over SPI by DMA, for a steady 30 fps on real hardware
 - Scoreboard HUD (balls left, hits) and a reset button for a new game
 - Host-side test that runs the real renderer and game logic against an emulated
-  ILI9341 panel, with no hardware needed
+  ILI9488 panel, with no hardware needed
 
 ## Hardware
 
 | Part | |
 |---|---|
 | MCU | Generic "RP2040 USB" stick (RP2040, 4 MB flash, USB-A) — [photo](docs/images/rp2040_board.jpg), [pinout](docs/images/rp2040_pinout.jpg) |
-| Display | Red 2.2" SPI TFT, ILI9341, 240×320, 9-pin header + SD card header — [drawing](docs/images/ili9341_back.jpg) |
+| Display | 3.5" SPI TFT module (MSP3520), ILI9488, 480×320, 9-pin header — [user manual](docs/datasheets/3.5inch_SPI_Module_MSP3520_User_Manual_EN.pdf) |
 | Controls | 5 momentary buttons (or a joystick module) to GND: up/down/left/right/centre, plus a reset button |
 
 See [docs/hardware.md](docs/hardware.md) for compatibility, power and backlight notes.
@@ -70,14 +72,11 @@ resistors are needed. Pins are set in [`src/config.h`](src/config.h).
 | 8 | LED | `3V3` (or GP8 with `PIN_BL 8`) |
 | 9 | SDO / MISO | GP4 (SPI0 RX), optional, used only for the status readback |
 
-Pin numbering follows the module's silkscreen (pin 1 = VCC, square pad):
-
-<p align="center">
-  <img src="docs/images/ili9341_back.jpg" width="560" alt="ILI9341 module drawing, back side">
-</p>
-
-Keep wires under ~15 cm. The 5-pin SD card header on the right isn't used by this
-firmware. The pins are set in [`src/config.h`](src/config.h).
+Pin numbers are the module's own (see section 2 of the
+[MSP3520 manual](docs/datasheets/3.5inch_SPI_Module_MSP3520_User_Manual_EN.pdf)).
+The module runs from 3.3 V or 5 V logic-compatible supply; the touch and SD card
+pins are not used by this firmware. Keep wires under ~15 cm. The pins are set in
+[`src/config.h`](src/config.h).
 
 ## Building
 
@@ -130,7 +129,7 @@ range; it's hidden after that.
 ## Testing without hardware
 
 `tests/host` builds the renderer and game logic for your PC against stub SDK
-headers and an ILI9341 emulator that interprets the SPI/DMA command stream. It
+headers and an ILI9488 emulator that interprets the SPI/DMA command stream. It
 checks that every frame sent to the panel matches a full composite of the
 background and all layers — catching any area that changed on screen without
 being marked dirty — and writes PPM screenshots (used for the images in this
@@ -150,9 +149,9 @@ ctest --test-dir build-host --output-on-failure
 
 | Setting | Where | Default |
 |---|---|---|
-| Pins, SPI instance, SPI clock | `src/config.h` | SPI0 on GP2–GP7, 40 MHz requested |
+| Pins, SPI instance, SPI clock | `src/config.h` | SPI0 on GP2–GP7, 15 MHz requested (12.5 MHz actual) |
 | Button pins | `src/config.h` | GP26/27/28/15/14/1 |
-| Orientation / colour order | `ILI9341_MADCTL` in `lib/ili9341/include/ili9341.h` | `0x28` (landscape, BGR) |
+| Orientation / colour order | `ILI9488_MADCTL` in `lib/ili9488/include/ili9488.h` | `0x28` (landscape, BGR) |
 | Cannon angle, power, charge time, recoil | `src/game_config.h` | 10°–65°, 1.3 s to full charge |
 | Pig speed, gravity, starting balls | `src/game_config.h` | — |
 | Board | `-DPICO_BOARD=...` | `rp2040_usb_stick` (`boards/`) |
@@ -175,8 +174,8 @@ python3 tools/make_intro_assets.py assets/title.png assets/story.png src/
 |---|---|
 | White screen only | The backlight works but the panel isn't initialised. Check CS/DC/RESET/SCK/MOSI and a common GND, or try `SPI_BAUD` at 10 MHz. |
 | Black screen | No backlight: LED (pin 8) not connected to 3V3. |
-| Colours look wrong | Colour order swapped: toggle bit `0x08` in `ILI9341_MADCTL`. For a labelled RED/GREEN/BLUE/WHITE test screen while bringing up a new display, build with `-DSHOW_TORTOISE=0`. |
-| Image mirrored or upside down | Set `ILI9341_MADCTL` to `0xE8`. |
+| Colours look wrong | Colour order swapped: toggle bit `0x08` in `ILI9488_MADCTL`. For a labelled RED/GREEN/BLUE/WHITE test screen while bringing up a new display, build with `-DSHOW_TORTOISE=0`. |
+| Image mirrored or upside down | Set `ILI9488_MADCTL` to `0xE8`. |
 | Random pixels / noise | Wires too long or poor ground: lower `SPI_BAUD`. |
 | Buttons don't respond | Check each GPIO switches to GND when pressed; pull-ups are enabled in firmware, no external resistors needed. |
 | No `/dev/ttyACM0` | Unplug and replug the stick; on Linux, add yourself to the `dialout` group. |
@@ -189,9 +188,9 @@ python3 tools/make_intro_assets.py assets/title.png assets/story.png src/
 ├── boards/                   board header for the RP2040 USB stick
 ├── assets/                   source art for the sprite/intro generators
 ├── src/                      game logic, renderer, input, display config
-├── lib/ili9341/              display driver and 5×7 font
+├── lib/ili9488/              display driver and 5×7 font
 ├── tools/                    generators that turn assets/ into src/*.c
-├── tests/host/               host build with ILI9341 emulator and SDK stubs
+├── tests/host/               host build with ILI9488 emulator and SDK stubs
 └── docs/                     hardware notes, wiring diagram, images
 ```
 

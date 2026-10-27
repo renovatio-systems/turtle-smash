@@ -5,7 +5,7 @@
 #include <stdlib.h>
 
 #include "dragon.h"
-#include "ili9341.h"
+#include "ili9488.h"
 
 #define SKY       COLOR_BLACK
 #define GROUND    RGB565(60, 40, 25)
@@ -31,7 +31,7 @@ static void fill_circle(int cx, int cy, int r, uint16_t c) {
     for (int dy = -r; dy <= r; dy++) {
         int dx = 0;
         while ((dx + 1) * (dx + 1) <= r * r - dy * dy) dx++;
-        ili9341_fill_rect(cx - dx, cy + dy, 2 * dx + 1, 1, c);
+        ili9488_fill_rect(cx - dx, cy + dy, 2 * dx + 1, 1, c);
     }
 }
 
@@ -55,7 +55,7 @@ static void fill_tri(int x0, int y0, int x1, int y1, int x2, int y2, uint16_t c)
                 if (x > hi) hi = x;
             }
         }
-        if (hi >= lo) ili9341_fill_rect(lo, y, hi - lo + 1, 1, c);
+        if (hi >= lo) ili9488_fill_rect(lo, y, hi - lo + 1, 1, c);
     }
 }
 
@@ -70,16 +70,16 @@ static void thick_line(int x0, int y0, int x1, int y1, int r0, int r1, uint16_t 
 // ------------------------------------------------------------------- scene
 
 void dragon_draw_scene(void) {
-    ili9341_fill_screen(SKY);
-    ili9341_fill_rect(0, 212, ILI9341_WIDTH, 28, GROUND);
-    ili9341_fill_rect(0, 212, ILI9341_WIDTH, 2, RGB565(110, 80, 50));
+    ili9488_fill_screen(SKY);
+    ili9488_fill_rect(0, 212, ILI9488_WIDTH, 28, GROUND);
+    ili9488_fill_rect(0, 212, ILI9488_WIDTH, 2, RGB565(110, 80, 50));
 
     // Stars, kept out of the flame area (which is repainted every frame).
     uint32_t s = 12345;
     for (int i = 0; i < 30; i++) {
         s = s * 1664525u + 1013904223u;
         int x = (s >> 8) % FIRE_X, y = (s >> 20) % 200;
-        ili9341_fill_rect(x, y, 1, 1, (i & 1) ? COLOR_WHITE : COLOR_GREY);
+        ili9488_fill_rect(x, y, 1, 1, (i & 1) ? COLOR_WHITE : COLOR_GREY);
     }
 
     // Far wing, then near wing.
@@ -97,10 +97,10 @@ void dragon_draw_scene(void) {
     fill_tri(8, 186, 0, 168, 16, 176, MEMBRANE);
 
     // Legs and feet.
-    ili9341_fill_rect(70, 192, 16, 20, DKGREEN);
-    ili9341_fill_rect(65, 208, 28, 6, DKGREEN);
-    ili9341_fill_rect(115, 192, 14, 20, DKGREEN);
-    ili9341_fill_rect(112, 208, 26, 6, DKGREEN);
+    ili9488_fill_rect(70, 192, 16, 20, DKGREEN);
+    ili9488_fill_rect(65, 208, 28, 6, DKGREEN);
+    ili9488_fill_rect(115, 192, 14, 20, DKGREEN);
+    ili9488_fill_rect(112, 208, 26, 6, DKGREEN);
 
     // Body and belly.
     fill_circle(95, 175, 34, GREEN);
@@ -120,15 +120,15 @@ void dragon_draw_scene(void) {
     fill_tri(142, 92, 126, 70, 150, 90, HORN);
     fill_tri(150, 90, 138, 68, 156, 88, HORN);
     fill_circle(152, 104, 15, GREEN);
-    ili9341_fill_rect(152, 110, 26, 8, DKGREEN);
-    ili9341_fill_rect(156, 105, 28, 5, MOUTH);
-    ili9341_fill_rect(152, 94, 32, 11, GREEN);
+    ili9488_fill_rect(152, 110, 26, 8, DKGREEN);
+    ili9488_fill_rect(156, 105, 28, 5, MOUTH);
+    ili9488_fill_rect(152, 94, 32, 11, GREEN);
     for (int x = 160; x <= 178; x += 6) {
         fill_tri(x, 105, x + 3, 105, x + 1, 109, COLOR_WHITE);
     }
-    ili9341_fill_rect(180, 97, 2, 2, DKGREEN); // nostril
+    ili9488_fill_rect(180, 97, 2, 2, DKGREEN); // nostril
     fill_circle(150, 99, 4, EYE);
-    ili9341_fill_rect(150, 96, 2, 6, COLOR_BLACK);
+    ili9488_fill_rect(150, 96, 2, 6, COLOR_BLACK);
     thick_line(142, 94, 156, 95, 1, 1, DKGREEN); // brow
 }
 
@@ -193,5 +193,5 @@ void dragon_step(uint32_t ms) {
     for (int y = 0; y < FIRE_H; y++)
         for (int x = 0; x < FIRE_W; x++)
             fire_px[y * FIRE_W + x] = palette[heat[y][x]];
-    ili9341_blit(FIRE_X, FIRE_Y, FIRE_W, FIRE_H, fire_px);
+    ili9488_blit(FIRE_X, FIRE_Y, FIRE_W, FIRE_H, fire_px);
 }

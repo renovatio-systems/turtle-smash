@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 440" width="760" height="440" font-family="Helvetica, Arial, sans-serif">
-  <title>Wiring: 2.2" ILI9341 TFT to RP2040 USB stick</title>
+  <title>Wiring: 3.5" ILI9488 TFT to RP2040 USB stick</title>
   <rect width="760" height="440" fill="#ffffff"/>
 
   <!-- Display module -->
   <rect x="20" y="40" width="210" height="370" rx="10" fill="#c8102e"/>
   <rect x="34" y="54" width="96" height="342" rx="4" fill="#1c1c1c"/>
-  <text x="82" y="225" fill="#e8e8e8" font-size="15" text-anchor="middle" transform="rotate(-90 82 225)">2.2" ILI9341 240×320</text>
+  <text x="82" y="225" fill="#e8e8e8" font-size="15" text-anchor="middle" transform="rotate(-90 82 225)">3.5" ILI9488 480×320</text>
   <text x="125" y="30" fill="#333" font-size="14" font-weight="bold" text-anchor="middle">TFT module (9-pin)</text>
 
   <!-- RP2040 board -->

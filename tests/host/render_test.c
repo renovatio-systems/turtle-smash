@@ -10,22 +10,27 @@
 #include "render.h"
 #include "tortoise.h"
 
-extern const uint16_t meadow_image[ILI9341_WIDTH * ILI9341_HEIGHT];
+extern const uint16_t meadow_image[GAME_W * GAME_H];
 extern uint64_t emu_time_us;
 extern uint32_t emu_pins_low;
 
 void sleep_ms(uint32_t ms) { (void)ms; }
 
-static uint16_t expect[H * W];
+// The game canvas (CW x CH) is shown on the panel (W x H) scaled 4/3.
+#define CW GAME_W
+#define CH GAME_H
 
-// Panel must equal the full composite; returns the number of differing pixels.
+static uint16_t canvas[CH * CW];
+
+// Panel must equal the full composite, scaled as render.c scales it. Returns the
+// number of differing pixels.
 static int compare_screen(void) {
-    render_target_t t = {expect, 0, 0, W, H};
+    render_target_t t = {canvas, 0, 0, CW, CH};
     render_compose(&t);
     int bad = 0;
     for (int y = 0; y < H; y++)
         for (int x = 0; x < W; x++)
-            bad += lcd.fb[y][x] != expect[y * W + x];
+            bad += lcd.fb[y][x] != canvas[(3 * y / 4) * CW + 3 * x / 4];
     return bad;
 }
 
@@ -48,7 +53,7 @@ static void stress_test(void) {
     render_add_layer(squares_layer);
     srand(7);
     for (int i = 0; i < N_SQ; i++)
-        sq[i] = (typeof(sq[i])){rand() % (W + 20) - 10, rand() % (H + 20) - 10,
+        sq[i] = (typeof(sq[i])){rand() % (CW + 20) - 10, rand() % (CH + 20) - 10,
                                 rand() % 9 - 4, rand() % 9 - 4, (uint16_t)(rand() | 0x0841)};
     render_dirty_all();
     render_flush();
@@ -60,8 +65,8 @@ static void stress_test(void) {
             render_dirty(sq[i].x, sq[i].y, 9, 9);
             sq[i].x += sq[i].dx;
             sq[i].y += sq[i].dy;
-            if (sq[i].x < -9 || sq[i].x > W) sq[i].dx = -sq[i].dx;
-            if (sq[i].y < -9 || sq[i].y > H) sq[i].dy = -sq[i].dy;
+            if (sq[i].x < -9 || sq[i].x > CW) sq[i].dx = -sq[i].dx;
+            if (sq[i].y < -9 || sq[i].y > CH) sq[i].dy = -sq[i].dy;
             render_dirty(sq[i].x, sq[i].y, 9, 9);
         }
         render_flush();
@@ -71,7 +76,7 @@ static void stress_test(void) {
         if (bad) break;
         CHECK(render_stats()->rects <= 48, "too many rects");
     }
-    printf("stress: 40 objects, avg %lu px/frame redrawn (full screen = %d)\n", px_total / 200, W * H);
+    printf("stress: 40 objects, avg %lu px/frame redrawn (full screen = %d)\n", px_total / 200, CW * CH);
 }
 
 // ---- the game
@@ -116,7 +121,7 @@ static void game_test(void) {
 
         const render_stats_t *rs = render_stats();
         px_total += rs->pixels;
-        if (rs->pixels > W * H / 4) frames_over++;
+        if (rs->pixels > CW * CH / 4) frames_over++;
         if (rs->rects > worst_rects) worst_rects = rs->rects;
         int bad = compare_screen();
         CHECK(bad == 0, "game tick %d: %d pixels differ", tick, bad);
@@ -154,10 +159,10 @@ static void input_test(void) {
 }
 
 int main(void) {
-    const ili9341_config_t cfg = {.spi = spi0, .pin_sck = PIN_SCK, .pin_mosi = PIN_MOSI,
+    const ili9488_config_t cfg = {.spi = spi0, .pin_sck = PIN_SCK, .pin_mosi = PIN_MOSI,
                                   .pin_miso = PIN_MISO, .pin_cs = PIN_CS, .pin_dc = PIN_DC,
                                   .pin_rst = PIN_RST, .pin_bl = PIN_BL, .baud = SPI_BAUD};
-    ili9341_init(&cfg);
+    ili9488_init(&cfg);
     input_test();
     stress_test();
     game_test();

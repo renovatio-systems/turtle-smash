@@ -6,7 +6,7 @@
 #include <string.h>
 
 #include "game_config.h"
-#include "ili9341.h"
+#include "ili9488.h"
 #include "input.h"
 #include "physics.h"
 #include "render.h"

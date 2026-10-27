@@ -4,7 +4,7 @@
 
 | Part | Details |
 |---|---|
-| Display | Red 2.2" SPI TFT module, **ILI9341**, 240×320 (QVGA), 9-pin display header, 5-pin SD card header |
+| Display | 3.5" SPI TFT module **MSP3520** (**ILI9488**, 480×320, 9-pin header, touch optional) — [user manual](datasheets/3.5inch_SPI_Module_MSP3520_User_Manual_EN.pdf). The earlier red 2.2" **ILI9341** module is described below. |
 | MCU board | Generic **"RP2040 USB" stick**: RP2040-B2, 12 MHz crystal, W25Q32JV 4 MB QSPI flash, USB-A plug, BOOT and RST buttons |
 
 ![RP2040 USB stick](images/rp2040_board.jpg)
@@ -23,6 +23,28 @@
 Because GP16–GP19 (the Pico's usual SPI0 pins) are missing, this project uses SPI0's
 alternate pins GP2 (SCK), GP3 (TX/MOSI) and GP4 (RX/MISO), keeping every display
 signal on the GP0–GP8 edge.
+
+### 3.5" ILI9488 module (MSP3520)
+
+Pin functions from the [MSP3520 user manual](datasheets/3.5inch_SPI_Module_MSP3520_User_Manual_EN.pdf)
+(section 2). The wiring is the same as the 2.2" module below, so the GPIO table in
+the README applies unchanged.
+
+| Pin | Name | Function |
+|---|---|---|
+| 1 | VCC | Supply, 3.3 V to 5 V |
+| 2 | GND | Ground |
+| 3 | CS | Chip select, active low |
+| 4 | RESET | Reset, active low |
+| 5 | DC/RS | Data (high) / command (low) select |
+| 6 | SDI(MOSI) | SPI data into the panel |
+| 7 | SCK | SPI clock |
+| 8 | LED | Backlight: high = on; connect to 3.3 V if you don't need dimming |
+| 9 | SDO(MISO) | SPI data out of the panel; optional, used only for status reads |
+
+Pins 10–14 are the touch screen (T_CLK, T_CS, T_DIN, T_DO, T_IRQ) and are not used.
+The panel takes 18-bit pixels over SPI, so each pixel is sent as three bytes
+(`lib/ili9488` packs RGB565 into that format).
 
 ### 2.2" ILI9341 module
 
@@ -78,9 +100,12 @@ Keep both chip selects high when idle so the devices don't fight on MISO.
   backlight transistor; otherwise add an NPN or MOSFET for PWM dimming.
 - **Current budget.** Display plus backlight is ≤ ~80 mA, well within USB and the
   stick's 3V3 LDO.
-- **SPI clock.** Writes are specified at 10 MHz but work at 40 MHz+ in practice.
+- **SPI clock (2.2" ILI9341).** Writes are specified at 10 MHz but work at 40 MHz+ in practice.
   Requesting 40 MHz gives 31.25 MHz (125 MHz / 4). Reads must be slow
   (≤ ~6 MHz), so the driver drops to 1 MHz for register reads.
+- **SPI clock (3.5" ILI9488).** The 4-wire write cycle is about 66 ns, so the
+  firmware requests 15 MHz (12.5 MHz actual with the 125 MHz clock). A full 480×320
+  frame is 460 KB at 3 bytes per pixel, so only changed areas are sent each tick.
 
 ## Power
 
@@ -99,8 +124,8 @@ using 5 V:
 
 ## Library options
 
-This project uses its own small Pico SDK driver (`lib/ili9341`). For other
-frameworks:
+This branch uses its own small Pico SDK driver (`lib/ili9488`). The 2.2" ILI9341
+clock build stays on `main`. For other frameworks:
 
 | Framework | Recommendation | Notes |
 |---|---|---|
